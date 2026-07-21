@@ -50,7 +50,8 @@ function json(obj) {
 /** Append one row per report. Nested tables are flattened to readable text. */
 function saveToSheet(data, now) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(SHEET_NAME) || ss.insertSheet(SHEET_NAME);
+  // Use the "Responses" tab if it exists, otherwise reuse the first sheet.
+  var sheet = ss.getSheetByName(SHEET_NAME) || ss.getSheets()[0];
 
   if (sheet.getLastRow() === 0) {
     sheet.appendRow([
