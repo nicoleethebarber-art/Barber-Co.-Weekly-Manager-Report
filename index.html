@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Barber &amp; Co. Weekly Manager Report</title>
+<style>
+  :root {
+    --gold: #e0b73f;
+    --gold-dark: #c69a2b;
+    --accent: #d64a2b;
+    --cream: #fbf4dc;
+    --panel: #efe6e4;
+    --panel-row: #ece2e0;
+    --ink: #1a1a1a;
+    --muted: #6b6b6b;
+    --line: #d8cdca;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0;
+    background: #f4f4f4;
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.4;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 16px; }
+  .card { background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,.08); }
+
+  .brand { text-align: center; padding: 28px 20px 10px; }
+  .brand .name { font-family: Georgia, "Times New Roman", serif; font-weight: 800; letter-spacing: 1px; font-size: clamp(28px, 8vw, 44px); line-height: .95; }
+  .brand .miami { font-family: "Brush Script MT", "Snell Roundhand", cursive; color: var(--gold-dark); font-size: clamp(26px, 8vw, 44px); margin-top: -6px; }
+
+  .title-bar { background: var(--gold); color: #fff; text-align: center; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; padding: 14px; font-size: 15px; margin: 8px 0 0; }
+
+  .section { padding: 0 4px; }
+  .section-head { background: var(--cream); font-family: Georgia, serif; font-variant: small-caps; font-weight: 700; font-size: 18px; letter-spacing: .5px; padding: 12px 16px 8px; border-bottom: 3px solid var(--accent); margin: 22px 0 0; }
+  .section-body { padding: 14px 16px 4px; }
+
+  label { display: block; font-weight: 600; font-size: 14px; margin: 0 0 5px; }
+  .field { margin-bottom: 14px; }
+  input[type=text], input[type=email], input[type=number], input[type=date], textarea, select {
+    width: 100%; padding: 12px 12px; font-size: 16px; border: 1px solid var(--line);
+    border-radius: 9px; background: #faf7f6; color: var(--ink); outline: none;
+  }
+  input:focus, textarea:focus, select:focus { border-color: var(--gold-dark); background: #fff; box-shadow: 0 0 0 3px rgba(224,183,63,.2); }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+  /* Repeatable tables */
+  .rows { display: flex; flex-direction: column; gap: 10px; }
+  .row-item { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: #faf7f6; position: relative; }
+  .grid { display: grid; gap: 10px; }
+  .grid-mkt { grid-template-columns: 1fr 1fr; }
+  .grid-host { grid-template-columns: 2fr 1fr; }
+  @media (min-width: 560px) { .grid-mkt { grid-template-columns: repeat(5, 1fr); } }
+  .mini-label { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; display:block; }
+  .row-num { position: absolute; top: -9px; left: 12px; background: var(--gold); color:#fff; font-size: 11px; font-weight:700; padding: 2px 8px; border-radius: 20px; }
+  .remove { position: absolute; top: 8px; right: 8px; background: none; border: none; color: var(--accent); font-size: 20px; cursor: pointer; line-height: 1; padding: 4px; }
+  .add-btn { margin: 4px 0 8px; background: #fff; border: 1.5px dashed var(--gold-dark); color: var(--gold-dark); font-weight: 700; padding: 11px; width: 100%; border-radius: 10px; cursor: pointer; font-size: 14px; }
+  .add-btn:active { background: var(--cream); }
+
+  .submit-wrap { padding: 22px 16px 30px; }
+  button.submit { width: 100%; background: var(--ink); color: #fff; border: none; padding: 16px; font-size: 17px; font-weight: 700; border-radius: 12px; cursor: pointer; letter-spacing: .5px; }
+  button.submit:disabled { opacity: .6; }
+  button.submit:active { transform: translateY(1px); }
+
+  .msg { display: none; text-align: center; padding: 30px 20px; }
+  .msg.show { display: block; }
+  .msg .check { font-size: 54px; }
+  .msg h2 { margin: 8px 0 6px; }
+  .error-note { display:none; background: #fdecea; color: #a3271a; border:1px solid #f3b7ae; border-radius:9px; padding:10px 12px; font-size:14px; margin: 0 16px 10px; }
+  .footer { text-align:center; color: var(--muted); font-size: 12px; padding: 8px 0 22px; }
+  .req { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <form id="reportForm" class="card" novalidate>
+    <div class="brand">
+      <div class="name">BARBER &amp; CO</div>
+      <div class="miami">Miami</div>
+    </div>
+    <div class="title-bar">Weekly Manager Report</div>
+
+    <div class="error-note" id="errorNote"></div>
+
+    <!-- MANAGER INFORMATION -->
+    <div class="section">
+      <div class="section-head">Manager Information</div>
+      <div class="section-body">
+        <div class="field">
+          <label>Manager Name <span class="req">*</span></label>
+          <input type="text" name="managerName" autocomplete="name" required />
+        </div>
+        <div class="field">
+          <label>Manager Email <span class="req">*</span></label>
+          <input type="email" name="managerEmail" autocomplete="email" required />
+          <div class="hint">We'll send your confirmation copy here.</div>
+        </div>
+        <div class="field">
+          <label>Store Location <span class="req">*</span></label>
+          <input type="text" name="storeLocation" required />
+        </div>
+        <div class="field">
+          <label>Week <span class="req">*</span></label>
+          <input type="text" name="week" placeholder="e.g. Week of July 21, 2026" required />
+        </div>
+        <div class="field">
+          <label>Sales to Date</label>
+          <input type="text" name="salesToDate" inputmode="decimal" placeholder="$" />
+        </div>
+        <div class="field">
+          <label>Goal</label>
+          <input type="text" name="goal" inputmode="decimal" placeholder="$" />
+        </div>
+      </div>
+    </div>
+
+    <!-- MARKETING SERVICES -->
+    <div class="section">
+      <div class="section-head">Marketing Services</div>
+      <div class="section-body">
+        <div class="rows" id="mktRows"></div>
+        <button type="button" class="add-btn" data-add="mkt">+ Add marketing service</button>
+      </div>
+    </div>
+
+    <!-- HOSTESS HOURS -->
+    <div class="section">
+      <div class="section-head">Hostess Hours</div>
+      <div class="section-body">
+        <div class="rows" id="hostRows"></div>
+        <button type="button" class="add-btn" data-add="host">+ Add hostess</button>
+      </div>
+    </div>
+
+    <div class="submit-wrap">
+      <button type="submit" class="submit" id="submitBtn">Submit Report</button>
+    </div>
+  </form>
+
+  <div class="card msg" id="successMsg">
+    <div class="check">✅</div>
+    <h2>Report Submitted</h2>
+    <p>Thanks! Your weekly report has been sent. A confirmation copy is on its way to your email.</p>
+    <button type="button" class="add-btn" style="max-width:260px;margin:14px auto 0;" onclick="location.reload()">Submit another report</button>
+  </div>
+
+  <div class="footer">Barber &amp; Co. Miami · Weekly Manager Report</div>
+</div>
+
+<script>
+  // ====== CONFIG ======
+  // Paste your Google Apps Script Web App URL between the quotes (see README.md).
+  const ENDPOINT_URL = "PASTE_YOUR_APPS_SCRIPT_URL_HERE";
+  // ====================
+
+  const mktRows = document.getElementById('mktRows');
+  const hostRows = document.getElementById('hostRows');
+
+  function mktRowHTML(n) {
+    return `
+      <div class="row-num">${n}</div>
+      <button type="button" class="remove" title="Remove">&times;</button>
+      <div class="grid grid-mkt">
+        <div><span class="mini-label">Date</span><input type="date" data-k="date" /></div>
+        <div><span class="mini-label">Barber</span><input type="text" data-k="barber" /></div>
+        <div><span class="mini-label">Service</span><input type="text" data-k="service" /></div>
+        <div><span class="mini-label">Total</span><input type="text" inputmode="decimal" data-k="total" placeholder="$" /></div>
+        <div><span class="mini-label">Promo Type</span><input type="text" data-k="promo" /></div>
+      </div>`;
+  }
+  function hostRowHTML(n) {
+    return `
+      <div class="row-num">${n}</div>
+      <button type="button" class="remove" title="Remove">&times;</button>
+      <div class="grid grid-host">
+        <div><span class="mini-label">Name</span><input type="text" data-k="name" /></div>
+        <div><span class="mini-label">Hours</span><input type="text" inputmode="decimal" data-k="hours" /></div>
+      </div>`;
+  }
+
+  function addRow(type) {
+    const container = type === 'mkt' ? mktRows : hostRows;
+    const div = document.createElement('div');
+    div.className = 'row-item';
+    div.dataset.type = type;
+    container.appendChild(div);
+    renumber(type);
+  }
+  function renumber(type) {
+    const container = type === 'mkt' ? mktRows : hostRows;
+    const html = type === 'mkt' ? mktRowHTML : hostRowHTML;
+    [...container.children].forEach((el, i) => {
+      // Preserve existing input values when renumbering
+      const values = {};
+      el.querySelectorAll('input').forEach(inp => values[inp.dataset.k] = inp.value);
+      el.innerHTML = html(i + 1);
+      el.querySelectorAll('input').forEach(inp => { if (values[inp.dataset.k] !== undefined) inp.value = values[inp.dataset.k]; });
+    });
+  }
+
+  document.querySelectorAll('[data-add]').forEach(btn =>
+    btn.addEventListener('click', () => addRow(btn.dataset.add)));
+
+  document.addEventListener('click', e => {
+    if (e.target.classList.contains('remove')) {
+      const item = e.target.closest('.row-item');
+      const type = item.dataset.type;
+      item.remove();
+      renumber(type);
+    }
+  });
+
+  // Seed with a few blank rows (like the paper form)
+  for (let i = 0; i < 4; i++) addRow('mkt');
+  for (let i = 0; i < 4; i++) addRow('host');
+
+  // ====== SUBMIT ======
+  const form = document.getElementById('reportForm');
+  const errorNote = document.getElementById('errorNote');
+
+  function collectRows(container, keys) {
+    return [...container.children].map(el => {
+      const obj = {};
+      el.querySelectorAll('input').forEach(inp => obj[inp.dataset.k] = inp.value.trim());
+      return obj;
+    }).filter(row => keys.some(k => row[k])); // drop fully-empty rows
+  }
+
+  form.addEventListener('submit', async e => {
+    e.preventDefault();
+    errorNote.style.display = 'none';
+
+    const required = ['managerName', 'managerEmail', 'storeLocation', 'week'];
+    for (const name of required) {
+      const el = form.elements[name];
+      if (!el.value.trim()) {
+        errorNote.textContent = 'Please fill in all required fields marked with *.';
+        errorNote.style.display = 'block';
+        el.focus();
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+    }
+
+    const payload = {
+      managerName: form.elements.managerName.value.trim(),
+      managerEmail: form.elements.managerEmail.value.trim(),
+      storeLocation: form.elements.storeLocation.value.trim(),
+      week: form.elements.week.value.trim(),
+      salesToDate: form.elements.salesToDate.value.trim(),
+      goal: form.elements.goal.value.trim(),
+      marketingServices: collectRows(mktRows, ['date','barber','service','total','promo']),
+      hostessHours: collectRows(hostRows, ['name','hours'])
+    };
+
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.textContent = 'Submitting…';
+
+    try {
+      if (ENDPOINT_URL.startsWith('PASTE_')) {
+        throw new Error('The form is not connected yet. Add your Apps Script URL in index.html (see README).');
+      }
+      // text/plain avoids a CORS preflight; Apps Script reads e.postData.contents.
+      await fetch(ENDPOINT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
+      // no-cors responses are opaque; the backend confirms via email.
+      form.style.display = 'none';
+      document.getElementById('successMsg').classList.add('show');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err) {
+      errorNote.textContent = err.message || 'Something went wrong. Please try again.';
+      errorNote.style.display = 'block';
+      btn.disabled = false;
+      btn.textContent = 'Submit Report';
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  });
+</script>
+</body>
+</html>
