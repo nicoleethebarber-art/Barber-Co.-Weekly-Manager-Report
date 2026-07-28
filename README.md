@@ -1,99 +1,131 @@
 # Barber & Co. Weekly Manager Report
 
-A mobile-friendly digital form that replaces the paper manager report. Managers
-open a link, fill it out on their phone or computer, and submit — **no account, no login**.
+A professional, mobile-friendly, **step-by-step** digital form that replaces the
+paper weekly manager report. Managers open a public link, complete it on a phone,
+tablet, or computer, and submit — **no account, no login**.
 
 On every submission the system automatically:
 
-- ⏱️ Records the date & time
-- 📊 Saves the response as a row in a Google Sheet
-- 📄 Creates a PDF copy of the report
-- 📧 Emails the report (PDF attached) to **INFO@BARBERANDCO.MIAMI**
-  with the subject `Manager Report – Manager Name – Location – Week`
-- ✅ Emails a confirmation copy to the manager
+- ⏱️ Records the submission date & time and assigns a **reference number**
+- 📊 Saves the response as a row in a **Google Sheet** (with email-delivery status)
+- 🗂️ Saves photos/receipts to a **private Google Drive folder** (never public)
+- 📄 Generates a **PDF copy** of the full report
+- 📧 Emails the complete report (PDF + attachments) to **info@barberandco.miami**
+  with the subject `Weekly Manager Report – [Store] – [Manager] – [Week Start to Week End]`
+- ✅ Emails a **confirmation copy** to the manager (if they provide an email)
+- 🔁 If email fails, the data is still saved and the form offers a **retry** — it
+  never claims delivery it can't confirm
 
 ---
 
 ## What's in this repo
 
-| File | What it is |
-|------|-----------|
-| `index.html` | The form managers fill out (the web page) |
-| `Code.gs` | The backend that emails, saves, and makes PDFs (Google Apps Script) |
-| `README.md` | This setup guide |
+| File | Purpose |
+|------|---------|
+| `index.html` | The form UI (8-step wizard, all sections, branding) |
+| `app.js` | Front-end logic: wizard, validation, conditional logic, dynamic rows, totals, autosave, uploads, submission |
+| `Code.gs` | Google Apps Script backend: storage, PDF, email, dedupe, rate-limiting, sanitization |
+| `README.md` | This guide |
+
+> **Files are never stored in source control.** Uploaded photos/receipts live only
+> in the private Drive folder created by the backend.
 
 ---
 
-## One-time setup (about 15–20 minutes, no coding)
+## The form (8 steps)
 
-You'll do two things: **(A)** set up the backend in Google, then **(B)** put the form online.
+1. **Manager Information** — name, location (dropdown + "Other"), week start/end, week of month, sales, auto date, optional contact
+2. **Weekly Manager Tasks** — 8 tasks, each Completed / Not Completed / N/A + notes + photo uploads (Not Completed requires an explanation)
+3. **Tasks — Week of the Month** — the selected week opens automatically; others stay collapsed
+   - First: Team Meeting · Time-Off Review · Hostess Evaluation *(if needed)*
+   - Second: Product Count & Orders (Layrite/Level 3) · Barber Sales/Scale Plan *(if needed)*
+   - Third: Supply Order Form + receipt uploads
+   - Fourth: WhatsApp meeting announcement · Incident Reports *(if any)* · One-on-One *(if needed)*
+   - Fifth: notes *(when applicable)*
+4. **Marketing & Expenses** — marketing services (with "no marketing this week"), expenses with per-row receipts, live totals, confirmation checkbox, plus preserved **Hostess Hours**
+5. **Attendance** — late arrivals/early departures *(if any)*, absences *(if any)*
+6. **Barber Ratings** — one card per barber, 1–5 ratings, auto overall
+7. **General Shop Report** — full condition report + uploads
+8. **Review & Certify** — summary with Edit buttons, 4 certification checkboxes, electronic signature
+
+---
+
+## One-time setup (~15–20 minutes, no coding)
 
 ### Part A — Backend (Google Sheet + Apps Script)
 
-1. Go to **[sheets.google.com](https://sheets.google.com)** and create a **new blank spreadsheet**.
-   Name it something like `Barber & Co. Manager Reports`.
-2. In that spreadsheet's top menu, click **Extensions → Apps Script**.
-3. Delete any sample code in the editor. Open `Code.gs` from this repo, copy **all**
-   of it, and paste it into the Apps Script editor. Click the **💾 Save** icon.
-4. Click **Deploy → New deployment**.
-   - Click the ⚙️ gear next to "Select type" → choose **Web app**.
-   - **Description:** `Manager Report`
+1. Go to **[sheets.google.com](https://sheets.google.com)** and create a **blank spreadsheet**
+   (e.g. `Barber & Co Manager Reports`). Use the Google account that should send the
+   emails — ideally the one that owns **info@barberandco.miami**.
+2. In that sheet: **Extensions → Apps Script**.
+3. Delete the sample code, paste **all** of `Code.gs`, and click **💾 Save**.
+4. **Deploy → New deployment** → select type **Web app**:
    - **Execute as:** `Me`
-   - **Who has access:** **Anyone**  ← important, so managers don't need to log in
-   - Click **Deploy**.
-5. Google will ask you to **authorize**. Click **Authorize access**, pick the Google
-   account that should send the emails, and allow the permissions.
-   > If you see a "Google hasn't verified this app" screen, click **Advanced →
-   > Go to (project name)**. This is normal for your own scripts.
-6. Copy the **Web app URL** it gives you (it ends in `/exec`). Keep it handy.
+   - **Who has access:** **Anyone**  ← so managers need no login
+   - **Deploy**, then **Authorize access** and allow the permissions.
+     *(If you see "Google hasn't verified this app", click **Advanced → Go to (project)**. This is normal for your own script.)*
+5. Copy the **Web app URL** (ends in `/exec`).
 
-> 📧 **Note on the sending email:** the emails are sent from whichever Google
-> account you authorized in step 5. If INFO@BARBERANDCO.MIAMI is a Google Workspace
-> account, log in as that account for steps 1–5 so mail comes from it directly.
+### Part B — Configure (environment variables = Script Properties)
 
-### Part B — Put the form online
+In the Apps Script editor: **Project Settings (⚙️) → Script Properties → Add script property**.
+All are optional except that the defaults are sensible.
 
-1. Open `index.html` in this repo and find this line near the bottom:
+| Property | Default | What it does |
+|----------|---------|--------------|
+| `OFFICE_EMAIL` | `info@barberandco.miami` | Where reports are emailed |
+| `DRIVE_FOLDER_ID` | *(auto-created)* | Parent Drive folder for uploads/PDFs |
+| `SHEET_ID` | *(bound sheet)* | Spreadsheet to log to |
+| `RATE_LIMIT_PER_MIN` | `15` | Max submissions/minute (spam guard) |
+| `SEND_CONFIRMATION` | `true` | Email the manager a confirmation copy |
+| `MAX_EMAIL_ATTACH_MB` | `20` | Above this, email links to Drive instead of attaching |
+
+> **Email service:** email is sent by Apps Script's `MailApp` **as the Google account
+> you authorized in step 4** — there is **no API key, SMTP password, or credential to
+> store anywhere**, and nothing sensitive is ever placed in the front-end. Gmail sending
+> limits apply (~100/day consumer, ~1,500/day Workspace), which is far above this use.
+
+### Part C — Connect & host the form
+
+1. Open `app.js`, find near the top:
    ```js
-   const ENDPOINT_URL = "PASTE_YOUR_APPS_SCRIPT_URL_HERE";
+   var ENDPOINT_URL = "PASTE_YOUR_APPS_SCRIPT_URL_HERE";
    ```
-   Replace the placeholder with the Web app URL you copied (keep the quotes):
-   ```js
-   const ENDPOINT_URL = "https://script.google.com/macros/s/AKfy..../exec";
-   ```
-2. Host the page so managers get a link. The easiest **free** option is **GitHub Pages**:
-   - In this GitHub repo, go to **Settings → Pages**.
-   - Under **Branch**, pick your branch and `/ (root)`, then **Save**.
-   - After a minute, GitHub shows your live link, e.g.
-     `https://<your-username>.github.io/Barber-Co.-Weekly-Manager-Report/`
-   - That link is what you send to managers.
-
-That's it. Send the link to your managers and every submission flows into your
-inbox, your spreadsheet, and a PDF — automatically.
+   Replace the placeholder with your Web app URL (keep the quotes). **This URL is not a
+   secret** — it's safe to ship in the front-end.
+2. *(Optional)* Add a `logo.png` (or `.svg`/`.jpg`) to the repo root and it will replace
+   the text wordmark automatically.
+3. Host with **GitHub Pages** (free): **Settings → Pages → Branch → `/root` → Save**.
+   Your live link appears (e.g. `https://<user>.github.io/Barber-Co.-Weekly-Manager-Report/`).
+   Send that link to managers.
 
 ---
 
-## Testing it
+## Testing checklist
 
-1. Open the live link (or `index.html` locally after adding the URL).
-2. Fill it out with test data and submit.
-3. Check: INFO@BARBERANDCO.MIAMI received the email with the PDF, the manager's
-   email got a confirmation, and a new row appeared in the Google Sheet.
+After deploying, submit a test report and confirm:
 
----
-
-## Making changes later
-
-- **Change where reports are emailed** → edit `OFFICE_EMAIL` at the top of `Code.gs`.
-- **Add or remove form fields** → edit `index.html` (and the matching parts of `Code.gs`).
-- After editing `Code.gs`, re-deploy: **Deploy → Manage deployments → ✏️ Edit →
-  Version: New version → Deploy**.
+1. Email arrives at `info@barberandco.miami` with the correct subject and PDF.
+2. The manager's confirmation email arrives (if an email was entered).
+3. A new row appears in the Google Sheet with **Email Status = SENT** and a reference #.
+4. Uploaded photos appear in the private Drive folder.
+5. Conditional sections show/hide correctly; totals calculate; drafts restore after refresh.
 
 ---
 
-## How it works (plain English)
+## Changing things later
 
-The form is a normal web page. When a manager taps **Submit**, it sends the answers
-to a small Google script you own. That script stamps the time, adds a row to your
-spreadsheet, builds a PDF, and sends the two emails. Everything runs on Google's
-free tier — there's no server for you to maintain and nothing to pay for.
+- **Where reports go** → `OFFICE_EMAIL` script property.
+- **Form fields** → edit `index.html` (markup) and `app.js` (payload/validation).
+- After editing `Code.gs`: **Deploy → Manage deployments → ✏️ Edit → Version: New version → Deploy**.
+
+---
+
+## Privacy & security notes
+
+- Incident reports, receipts, and employee information are stored in a **private** Drive
+  folder — no public sharing is ever set.
+- Input is **sanitized** server-side (control characters stripped, spreadsheet
+  formula-injection neutralized, output HTML-escaped in the PDF/email).
+- Spam is mitigated without logins via a **honeypot** field and **rate limiting**.
+- Submissions are **idempotent** by a per-report ID, preventing accidental duplicates.

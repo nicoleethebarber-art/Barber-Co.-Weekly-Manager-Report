@@ -5,283 +5,545 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Barber &amp; Co. Weekly Manager Report</title>
 <style>
-  :root {
-    --gold: #e0b73f;
-    --gold-dark: #c69a2b;
-    --accent: #d64a2b;
-    --cream: #fbf4dc;
-    --panel: #efe6e4;
-    --panel-row: #ece2e0;
-    --ink: #1a1a1a;
-    --muted: #6b6b6b;
-    --line: #d8cdca;
+  :root{
+    --black:#111;--ink:#1a1a1a;--white:#fff;--gold:#d4af37;--mustard:#e0b73f;
+    --gold-dark:#b8912a;--cream:#fbf6e6;--panel:#faf8f4;--line:#e2ddd3;--muted:#63625e;
+    --ok:#1f8a4c;--no:#b23023;--na:#6a6a6a;--warn:#a3271a;
   }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  body {
-    margin: 0;
-    background: #f4f4f4;
-    color: var(--ink);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    line-height: 1.4;
-  }
-  .wrap { max-width: 720px; margin: 0 auto; padding: 16px; }
-  .card { background: #fff; border-radius: 14px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,.08); }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:#f2f2f2;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.45;font-size:16px}
+  .wrap{max-width:780px;margin:0 auto;padding:0 14px 90px}
 
-  .brand { text-align: center; padding: 28px 20px 10px; }
-  .brand .name { font-family: Georgia, "Times New Roman", serif; font-weight: 800; letter-spacing: 1px; font-size: clamp(28px, 8vw, 44px); line-height: .95; }
-  .brand .miami { font-family: "Brush Script MT", "Snell Roundhand", cursive; color: var(--gold-dark); font-size: clamp(26px, 8vw, 44px); margin-top: -6px; }
+  /* Progress bar */
+  .progress-wrap{position:sticky;top:0;z-index:60;background:var(--black);padding:10px 14px}
+  .progress-inner{max-width:780px;margin:0 auto}
+  .progress-label{color:#fff;font-size:12px;letter-spacing:.4px;display:flex;justify-content:space-between;margin-bottom:6px}
+  .progress-label b{color:var(--mustard)}
+  .progress-track{height:8px;background:#333;border-radius:20px;overflow:hidden}
+  .progress-fill{height:100%;width:0;background:linear-gradient(90deg,var(--gold),var(--mustard));transition:width .35s ease}
 
-  .title-bar { background: var(--gold); color: #fff; text-align: center; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; padding: 14px; font-size: 15px; margin: 8px 0 0; }
+  .card{background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 3px 16px rgba(0,0,0,.07);margin-top:16px}
+  .brand{text-align:center;padding:26px 20px 4px}
+  .brand img{max-width:230px;height:auto;display:block;margin:0 auto}
+  .brand .name{font-family:Georgia,"Times New Roman",serif;font-weight:800;letter-spacing:1.5px;font-size:clamp(28px,7.5vw,44px);line-height:.92;color:var(--black)}
+  .brand .miami{font-family:"Brush Script MT","Snell Roundhand",cursive;color:var(--gold-dark);font-size:clamp(26px,7.5vw,44px);margin-top:-4px}
+  .title-bar{background:var(--mustard);color:var(--black);text-align:center;font-weight:800;letter-spacing:2px;text-transform:uppercase;padding:13px;font-size:14px}
+  .subtitle{text-align:center;color:var(--muted);font-size:13px;padding:10px 16px 0}
 
-  .section { padding: 0 4px; }
-  .section-head { background: var(--cream); font-family: Georgia, serif; font-variant: small-caps; font-weight: 700; font-size: 18px; letter-spacing: .5px; padding: 12px 16px 8px; border-bottom: 3px solid var(--accent); margin: 22px 0 0; }
-  .section-body { padding: 14px 16px 4px; }
+  /* Step header chips */
+  .steps-chips{display:flex;gap:6px;overflow-x:auto;padding:14px 16px 4px;-webkit-overflow-scrolling:touch}
+  .chip{flex:0 0 auto;font-size:11.5px;font-weight:700;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:6px 11px;white-space:nowrap}
+  .chip.active{background:var(--black);color:var(--mustard);border-color:var(--black)}
+  .chip.done{color:var(--ok);border-color:var(--ok)}
 
-  label { display: block; font-weight: 600; font-size: 14px; margin: 0 0 5px; }
-  .field { margin-bottom: 14px; }
-  input[type=text], input[type=email], input[type=number], input[type=date], textarea, select {
-    width: 100%; padding: 12px 12px; font-size: 16px; border: 1px solid var(--line);
-    border-radius: 9px; background: #faf7f6; color: var(--ink); outline: none;
-  }
-  input:focus, textarea:focus, select:focus { border-color: var(--gold-dark); background: #fff; box-shadow: 0 0 0 3px rgba(224,183,63,.2); }
-  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .step{display:none;padding:6px 16px 10px}
+  .step.active{display:block}
+  .step-title{font-family:Georgia,serif;font-weight:700;font-size:21px;margin:12px 0 2px;display:flex;align-items:center;gap:10px}
+  .step-title .num{background:var(--black);color:var(--mustard);font-family:-apple-system,sans-serif;font-size:13px;font-weight:800;width:28px;height:28px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto}
+  .step-desc{color:var(--muted);font-size:13px;margin:2px 0 14px}
 
-  /* Repeatable tables */
-  .rows { display: flex; flex-direction: column; gap: 10px; }
-  .row-item { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: #faf7f6; position: relative; }
-  .grid { display: grid; gap: 10px; }
-  .grid-mkt { grid-template-columns: 1fr 1fr; }
-  .grid-host { grid-template-columns: 2fr 1fr; }
-  @media (min-width: 560px) { .grid-mkt { grid-template-columns: repeat(5, 1fr); } }
-  .mini-label { font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; display:block; }
-  .row-num { position: absolute; top: -9px; left: 12px; background: var(--gold); color:#fff; font-size: 11px; font-weight:700; padding: 2px 8px; border-radius: 20px; }
-  .remove { position: absolute; top: 8px; right: 8px; background: none; border: none; color: var(--accent); font-size: 20px; cursor: pointer; line-height: 1; padding: 4px; }
-  .add-btn { margin: 4px 0 8px; background: #fff; border: 1.5px dashed var(--gold-dark); color: var(--gold-dark); font-weight: 700; padding: 11px; width: 100%; border-radius: 10px; cursor: pointer; font-size: 14px; }
-  .add-btn:active { background: var(--cream); }
+  .group{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px;background:var(--panel)}
+  .group>h3{margin:0 0 4px;font-size:15px}
+  .group-note{font-size:12.5px;color:var(--muted);margin:0 0 12px}
 
-  .submit-wrap { padding: 22px 16px 30px; }
-  button.submit { width: 100%; background: var(--ink); color: #fff; border: none; padding: 16px; font-size: 17px; font-weight: 700; border-radius: 12px; cursor: pointer; letter-spacing: .5px; }
-  button.submit:disabled { opacity: .6; }
-  button.submit:active { transform: translateY(1px); }
+  label{display:block;font-weight:600;font-size:14px;margin:0 0 6px}
+  .field{margin-bottom:15px}.field:last-child{margin-bottom:0}
+  input[type=text],input[type=email],input[type=tel],input[type=number],input[type=date],input[type=time],textarea,select{
+    width:100%;padding:13px 12px;font-size:16px;border:1.5px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);outline:none;font-family:inherit}
+  textarea{min-height:82px;resize:vertical}
+  input:focus,textarea:focus,select:focus{border-color:var(--gold-dark);box-shadow:0 0 0 3px rgba(224,183,63,.25)}
+  select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath fill='%23888' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:36px}
+  .hint{font-size:12px;color:var(--muted);margin-top:5px}
+  .req{color:var(--gold-dark)}
+  .opt{font-weight:400;color:var(--muted)}
+  .two-col{display:grid;grid-template-columns:1fr;gap:0 14px}
+  @media(min-width:560px){.two-col{grid-template-columns:1fr 1fr}}
+  .invalid{border-color:var(--warn)!important;box-shadow:0 0 0 3px rgba(163,39,26,.15)!important}
 
-  .msg { display: none; text-align: center; padding: 30px 20px; }
-  .msg.show { display: block; }
-  .msg .check { font-size: 54px; }
-  .msg h2 { margin: 8px 0 6px; }
-  .error-note { display:none; background: #fdecea; color: #a3271a; border:1px solid #f3b7ae; border-radius:9px; padding:10px 12px; font-size:14px; margin: 0 16px 10px; }
-  .footer { text-align:center; color: var(--muted); font-size: 12px; padding: 8px 0 22px; }
-  .req { color: var(--accent); }
+  .currency{position:relative}
+  .currency input{padding-left:26px}
+  .currency::before{content:"$";position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-weight:600}
+
+  /* Task checklist */
+  .task{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;background:var(--panel)}
+  .task-title{font-weight:700;font-size:15px;margin-bottom:10px}
+  .status-opts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+  .status-opts label{display:flex;align-items:center;justify-content:center;gap:5px;margin:0;padding:12px 4px;border:1.5px solid var(--line);border-radius:10px;background:#fff;font-size:12.5px;font-weight:700;cursor:pointer;text-align:center;min-height:46px}
+  .status-opts input{position:absolute;opacity:0;pointer-events:none}
+  .status-opts label.sel-ok{border-color:var(--ok);background:#eafaf0;color:var(--ok)}
+  .status-opts label.sel-no{border-color:var(--no);background:#fdecea;color:var(--no)}
+  .status-opts label.sel-na{border-color:var(--na);background:#f0f0f0;color:#444}
+  .explain-box{display:none}
+  .explain-box.show{display:block}
+
+  /* Uploader */
+  .uploader{margin-top:10px}
+  .upload-btn{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1.5px dashed var(--gold-dark);color:var(--gold-dark);font-weight:700;padding:12px 14px;border-radius:10px;cursor:pointer;font-size:13.5px;min-height:46px}
+  .upload-btn:active{background:var(--cream)}
+  .upload-input{display:none}
+  .thumbs{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+  .thumb{position:relative;width:76px;height:76px;border-radius:9px;overflow:hidden;border:1px solid var(--line);background:#eee}
+  .thumb img{width:100%;height:100%;object-fit:cover}
+  .thumb .doc{display:flex;align-items:center;justify-content:center;height:100%;font-size:10.5px;text-align:center;padding:4px;color:#555;word-break:break-word}
+  .thumb .x{position:absolute;top:2px;right:2px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;border:none;font-size:14px;line-height:1;cursor:pointer}
+  .thumb .fn{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.55);color:#fff;font-size:9px;padding:1px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .upload-meta{font-size:11.5px;color:var(--muted);margin-top:6px}
+
+  /* Repeatable rows */
+  .rows{display:flex;flex-direction:column;gap:12px}
+  .row-item{border:1px solid var(--line);border-radius:12px;padding:16px 14px 8px;background:#fff;position:relative}
+  .row-num{position:absolute;top:-10px;left:14px;background:var(--mustard);color:var(--black);font-size:11px;font-weight:800;padding:2px 9px;border-radius:20px}
+  .row-remove{position:absolute;top:8px;right:8px;background:none;border:none;color:var(--warn);font-size:24px;line-height:1;cursor:pointer;padding:2px 6px}
+  .row-grid{display:grid;gap:10px}
+  .add-btn{margin:8px 0 4px;background:#fff;border:1.5px dashed var(--gold-dark);color:var(--gold-dark);font-weight:700;padding:14px;width:100%;border-radius:11px;cursor:pointer;font-size:14px;min-height:48px}
+  .add-btn:active{background:var(--cream)}
+  .mini-label{font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px;display:block}
+
+  /* Yes/No */
+  .yesno{display:inline-flex;border:1.5px solid var(--line);border-radius:10px;overflow:hidden}
+  .yesno label{margin:0;padding:12px 24px;cursor:pointer;font-weight:700;font-size:14px;background:#fff;min-height:46px;display:flex;align-items:center}
+  .yesno input{position:absolute;opacity:0;pointer-events:none}
+  .yesno label.on-yes{background:var(--ok);color:#fff}
+  .yesno label.on-no{background:#555;color:#fff}
+
+  .check-line{display:flex;align-items:flex-start;gap:10px;font-weight:600;font-size:14px;margin-bottom:10px;cursor:pointer}
+  .check-line input{width:22px;height:22px;flex:0 0 auto;margin-top:1px}
+
+  /* Collapsible */
+  details.collapse{border:1px solid var(--line);border-radius:12px;margin-bottom:12px;background:#fff;overflow:hidden}
+  details.collapse>summary{list-style:none;cursor:pointer;padding:15px 16px;font-weight:700;font-size:15px;background:var(--panel);display:flex;align-items:center;justify-content:space-between}
+  details.collapse>summary::-webkit-details-marker{display:none}
+  details.collapse>summary::after{content:"▸";color:var(--gold-dark);transition:transform .2s}
+  details.collapse[open]>summary::after{transform:rotate(90deg)}
+  details.collapse .inner{padding:14px 16px}
+  .tbd{color:var(--muted);font-size:13px;font-style:italic}
+  .active-week-banner{background:var(--cream);border:1px solid var(--gold);border-radius:10px;padding:10px 12px;font-size:13.5px;margin-bottom:12px}
+  .active-week-banner b{color:var(--gold-dark)}
+
+  /* Totals panel */
+  .totals{background:var(--black);color:#fff;border-radius:12px;padding:14px;margin-top:12px;font-size:14px}
+  .totals h4{margin:0 0 8px;color:var(--mustard);font-size:13px;letter-spacing:.5px;text-transform:uppercase}
+  .totals .row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid #2a2a2a}
+  .totals .row:last-child{border-bottom:none}
+  .totals .grand{font-weight:800;font-size:16px;color:var(--mustard)}
+  .totals small{color:#bbb}
+
+  /* Ratings */
+  .rate-field{margin-bottom:12px}
+  .rate-scale{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+  .rate-scale label{margin:0;text-align:center;border:1.5px solid var(--line);border-radius:9px;padding:10px 2px;font-weight:800;font-size:15px;cursor:pointer;background:#fff;min-height:46px;display:flex;align-items:center;justify-content:center}
+  .rate-scale input{position:absolute;opacity:0;pointer-events:none}
+  .rate-scale label.on{background:var(--gold);border-color:var(--gold-dark);color:var(--black)}
+  .rate-legend{font-size:11px;color:var(--muted);margin-top:4px}
+
+  /* Wizard nav */
+  .nav{position:sticky;bottom:0;background:#fff;border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));display:flex;gap:10px;z-index:55}
+  .nav button{flex:1;padding:15px;border-radius:12px;font-size:15px;font-weight:800;cursor:pointer;border:1.5px solid var(--black);min-height:50px}
+  .btn-prev{background:#fff;color:var(--black)}
+  .btn-next{background:var(--black);color:#fff}
+  .btn-next:disabled{opacity:.55;cursor:not-allowed}
+  .nav .btn-prev[hidden]{display:none}
+
+  .error-note{display:none;background:#fdecea;color:var(--warn);border:1px solid #f3b7ae;border-radius:10px;padding:12px 14px;font-size:14px;margin:0 0 12px}
+  .error-note ul{margin:6px 0 0;padding-left:18px}
+  .warn-note{display:none;background:#fff6e0;color:#8a5a00;border:1px solid #f0d48a;border-radius:10px;padding:12px 14px;font-size:14px;margin:12px 0 0}
+  .warn-note.show{display:block}
+
+  .autosave-note{text-align:center;font-size:12px;color:var(--muted);margin:12px 0 0}
+  .autosave-note b{color:var(--ok)}
+  .restore-banner{display:none;background:var(--cream);border:1px solid var(--gold);border-radius:12px;padding:12px 14px;margin:16px 0 0;font-size:14px;align-items:center;justify-content:space-between;gap:10px}
+  .restore-banner.show{display:flex}
+  .restore-banner button{background:none;border:none;color:var(--gold-dark);font-weight:700;cursor:pointer;font-size:13px;text-decoration:underline}
+
+  /* Review */
+  .review-block{border:1px solid var(--line);border-radius:12px;margin-bottom:12px;overflow:hidden}
+  .review-block h4{margin:0;background:var(--cream);padding:10px 14px;font-size:14px;border-bottom:1px solid var(--line)}
+  .review-block .kv{display:flex;padding:7px 14px;font-size:13.5px;border-bottom:1px solid #f0ece3}
+  .review-block .kv:last-child{border-bottom:none}
+  .review-block .kv .k{flex:0 0 45%;color:var(--muted);font-weight:600;padding-right:8px}
+  .review-block .kv .v{flex:1;white-space:pre-wrap;word-break:break-word}
+  .review-edit{font-size:12px;color:var(--gold-dark);font-weight:700;text-decoration:underline;background:none;border:none;cursor:pointer;float:right}
+
+  .msg{display:none;text-align:center;padding:44px 24px}
+  .msg.show{display:block}
+  .msg .check{font-size:62px}
+  .msg h2{margin:10px 0 8px}
+  .msg p{color:var(--muted)}
+  .refbox{display:inline-block;background:var(--panel);border:1px dashed var(--gold-dark);border-radius:10px;padding:10px 16px;margin:12px 0;font-weight:800;letter-spacing:1px}
+  .footer{text-align:center;color:var(--muted);font-size:12px;padding:18px 0 4px}
+  .hp-field{position:absolute!important;left:-9999px;top:-9999px;width:1px;height:1px;opacity:0;overflow:hidden}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);border:0}
 </style>
 </head>
 <body>
+
+<div class="progress-wrap">
+  <div class="progress-inner">
+    <div class="progress-label"><span id="stepName">Manager Information</span><span>Step <b id="stepNum">1</b> of <b id="stepTotal">8</b></span></div>
+    <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+  </div>
+</div>
+
 <div class="wrap">
-  <form id="reportForm" class="card" novalidate>
-    <div class="brand">
-      <div class="name">BARBER &amp; CO</div>
-      <div class="miami">Miami</div>
+  <div class="restore-banner" id="restoreBanner">
+    <span>📝 We restored your unsaved report from this device.</span>
+    <button type="button" id="discardDraft">Start fresh</button>
+  </div>
+
+  <form id="reportForm" class="card" novalidate autocomplete="on">
+    <div class="brand" id="brandHeader">
+      <div class="name">BARBER &amp; CO</div><div class="miami">Miami</div>
     </div>
     <div class="title-bar">Weekly Manager Report</div>
+    <div class="subtitle">Complete each step below. Your progress saves automatically on this device — no account needed.</div>
 
-    <div class="error-note" id="errorNote"></div>
+    <div class="steps-chips" id="stepsChips"></div>
 
-    <!-- MANAGER INFORMATION -->
-    <div class="section">
-      <div class="section-head">Manager Information</div>
-      <div class="section-body">
-        <div class="field">
-          <label>Manager Name <span class="req">*</span></label>
-          <input type="text" name="managerName" autocomplete="name" required />
-        </div>
-        <div class="field">
-          <label>Manager Email <span class="req">*</span></label>
-          <input type="email" name="managerEmail" autocomplete="email" required />
-          <div class="hint">We'll send your confirmation copy here.</div>
-        </div>
-        <div class="field">
-          <label>Store Location <span class="req">*</span></label>
-          <input type="text" name="storeLocation" required />
-        </div>
-        <div class="field">
-          <label>Week <span class="req">*</span></label>
-          <input type="text" name="week" placeholder="e.g. Week of July 21, 2026" required />
-        </div>
-        <div class="field">
-          <label>Sales to Date</label>
-          <input type="text" name="salesToDate" inputmode="decimal" placeholder="$" />
-        </div>
-        <div class="field">
-          <label>Goal</label>
-          <input type="text" name="goal" inputmode="decimal" placeholder="$" />
-        </div>
-      </div>
+    <!-- Honeypot -->
+    <div class="hp-field" aria-hidden="true">
+      <label for="hp">Leave this field empty</label>
+      <input type="text" id="hp" name="company_website" tabindex="-1" autocomplete="off">
     </div>
 
-    <!-- MARKETING SERVICES -->
-    <div class="section">
-      <div class="section-head">Marketing Services</div>
-      <div class="section-body">
-        <div class="rows" id="mktRows"></div>
-        <button type="button" class="add-btn" data-add="mkt">+ Add marketing service</button>
-      </div>
-    </div>
+    <!-- ============ STEP 1: MANAGER INFORMATION ============ -->
+    <section class="step" data-step="1" data-name="Manager Information">
+      <div class="step-title"><span class="num">1</span> Manager Information</div>
+      <div class="step-desc">Tell us who's reporting and for which week.</div>
 
-    <!-- HOSTESS HOURS -->
-    <div class="section">
-      <div class="section-head">Hostess Hours</div>
-      <div class="section-body">
+      <div class="field">
+        <label for="managerName">Manager Name <span class="req">*</span></label>
+        <input type="text" id="managerName" name="managerName" autocomplete="name" required maxlength="120">
+      </div>
+      <div class="field">
+        <label for="storeLocation">Store Location <span class="req">*</span></label>
+        <select id="storeLocation" name="storeLocation" required>
+          <option value="">Select a location…</option>
+          <option>Miami / Edgewater</option><option>Pinecrest</option><option>Studio</option><option>Other</option>
+        </select>
+      </div>
+      <div class="field" id="storeOtherField" style="display:none">
+        <label for="storeLocationOther">Enter Location <span class="req">*</span></label>
+        <input type="text" id="storeLocationOther" name="storeLocationOther" maxlength="120">
+      </div>
+      <div class="two-col">
+        <div class="field"><label for="weekStart">Week Start Date <span class="req">*</span></label><input type="date" id="weekStart" name="weekStart" required></div>
+        <div class="field"><label for="weekEnd">Week End Date <span class="req">*</span></label><input type="date" id="weekEnd" name="weekEnd" required></div>
+      </div>
+      <div class="field">
+        <label for="weekOfMonth">Week of the Month <span class="req">*</span></label>
+        <select id="weekOfMonth" name="weekOfMonth" required>
+          <option value="">Select…</option>
+          <option value="first">First week</option><option value="second">Second week</option>
+          <option value="third">Third week</option><option value="fourth">Fourth week</option>
+          <option value="fifth">Fifth week (when applicable)</option>
+        </select>
+      </div>
+      <div class="two-col">
+        <div class="field currency"><label for="salesToDate">Sales to Date</label><input type="text" id="salesToDate" name="salesToDate" inputmode="decimal" data-currency placeholder="0.00"></div>
+        <div class="field currency"><label for="salesGoal">Weekly / Monthly Sales Goal</label><input type="text" id="salesGoal" name="salesGoal" inputmode="decimal" data-currency placeholder="0.00"></div>
+      </div>
+      <div class="two-col">
+        <div class="field"><label for="completedDate">Date Report Completed</label><input type="date" id="completedDate" name="completedDate" readonly><div class="hint">Filled in automatically.</div></div>
+        <div class="field"><label for="managerContact">Manager Email or Phone <span class="opt">(optional)</span></label><input type="text" id="managerContact" name="managerContact" autocomplete="email" maxlength="160" placeholder="For your confirmation copy"><div class="hint">Add an email to get a confirmation copy.</div></div>
+      </div>
+    </section>
+
+    <!-- ============ STEP 2: WEEKLY TASKS ============ -->
+    <section class="step" data-step="2" data-name="Weekly Tasks">
+      <div class="step-title"><span class="num">2</span> Weekly Manager Tasks</div>
+      <div class="step-desc">Mark each task. If a task is <b>Not Completed</b>, please explain why and give a follow-up plan. Attach photos where proof is relevant.</div>
+      <div id="weeklyTasks"></div>
+    </section>
+
+    <!-- ============ STEP 3: MONTHLY WEEK TASKS ============ -->
+    <section class="step" data-step="3" data-name="Monthly Week Tasks">
+      <div class="step-title"><span class="num">3</span> Tasks — Week of the Month</div>
+      <div class="step-desc">The tasks for your selected week open automatically. Other weeks stay available below.</div>
+      <div class="active-week-banner" id="weekBanner">Select a <b>Week of the Month</b> in Step 1 to load this week's tasks.</div>
+
+      <!-- FIRST -->
+      <details class="collapse week-block" data-week="first">
+        <summary>First Week of the Month</summary>
+        <div class="inner">
+          <div class="group">
+            <h3>1 · Conduct Team Meeting</h3>
+            <div class="field"><label>Meeting Date</label><input type="date" name="fw_meeting_date"></div>
+            <div class="field"><label>Employees Who Attended</label><textarea name="fw_meeting_attendees" maxlength="1200"></textarea></div>
+            <div class="field"><label>Summary of Situations Discussed</label><textarea name="fw_meeting_summary" maxlength="3000"></textarea></div>
+            <div class="field"><label>Barber Feedback</label><textarea name="fw_meeting_feedback" maxlength="3000"></textarea></div>
+            <div class="field"><label>Decisions or Action Items</label><textarea name="fw_meeting_decisions" maxlength="3000"></textarea></div>
+            <div class="two-col">
+              <div class="field"><label>Person Responsible for Each Item</label><textarea name="fw_meeting_responsible" maxlength="1500"></textarea></div>
+              <div class="field"><label>Due Date (when applicable)</label><input type="date" name="fw_meeting_due"></div>
+            </div>
+          </div>
+          <div class="group">
+            <h3>2 · Review Time-Off Calendar &amp; Vacation Requests</h3>
+            <label class="check-line"><input type="checkbox" name="fw_timeoff_reviewed"> Current calendar was reviewed</label>
+            <label class="check-line"><input type="checkbox" name="fw_timeoff_asked"> Barbers were asked about time off this month</label>
+            <label class="mini-label">Submitted vacation / time-off requests</label>
+            <div class="rows" id="fwTimeoffRows"></div>
+            <button type="button" class="add-btn" data-add="fwTimeoff">+ Add time-off request</button>
+            <div class="uploader" data-upload="fw_timeoff_calendar">
+              <label class="upload-btn"><input type="file" class="upload-input" accept="image/*,application/pdf" multiple>📎 Upload calendar screenshot / photo</label>
+              <div class="thumbs"></div>
+            </div>
+          </div>
+          <div class="group">
+            <h3>3 · Hostess Evaluation <span class="opt">(only if needed)</span></h3>
+            <div class="field"><label>Is a hostess evaluation needed this month?</label>
+              <div class="yesno" data-yesno="fw_hostess_needed"><label><input type="radio" name="fw_hostess_needed" value="yes">Yes</label><label><input type="radio" name="fw_hostess_needed" value="no">No</label></div>
+            </div>
+            <div data-showif="fw_hostess_needed=yes" style="display:none">
+              <div class="two-col">
+                <div class="field"><label>Hostess Name</label><input type="text" name="fw_hostess_name" maxlength="120"></div>
+                <div class="field"><label>Evaluation Date</label><input type="date" name="fw_hostess_date"></div>
+              </div>
+              <div class="rate-field"><label>Attendance &amp; Punctuality</label><div class="rate-scale" data-rate="fw_hostess_attendance"></div></div>
+              <div class="rate-field"><label>Customer Service</label><div class="rate-scale" data-rate="fw_hostess_service"></div></div>
+              <div class="rate-field"><label>Communication</label><div class="rate-scale" data-rate="fw_hostess_comm"></div></div>
+              <div class="rate-field"><label>Work Ethic</label><div class="rate-scale" data-rate="fw_hostess_ethic"></div></div>
+              <div class="rate-field"><label>Cleanliness &amp; Organization</label><div class="rate-scale" data-rate="fw_hostess_clean"></div><div class="rate-legend">1 = Poor · 3 = Average · 5 = Excellent</div></div>
+              <div class="field"><label>Strengths</label><textarea name="fw_hostess_strengths" maxlength="2000"></textarea></div>
+              <div class="field"><label>Areas Needing Improvement</label><textarea name="fw_hostess_improve" maxlength="2000"></textarea></div>
+              <div class="field"><label>Action Plan</label><textarea name="fw_hostess_action" maxlength="2000"></textarea></div>
+              <div class="two-col">
+                <div class="field"><label>Follow-up Date</label><input type="date" name="fw_hostess_followup"></div>
+                <div class="field"><label>Manager Comments</label><textarea name="fw_hostess_comments" maxlength="2000"></textarea></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- SECOND -->
+      <details class="collapse week-block" data-week="second">
+        <summary>Second Week of the Month</summary>
+        <div class="inner">
+          <div class="group">
+            <h3>1 · Product Count &amp; Orders — Layrite and Level 3</h3>
+            <p class="group-note">Add a row per product. Estimated total calculates automatically.</p>
+            <div class="rows" id="invRows"></div>
+            <button type="button" class="add-btn" data-add="inv">+ Add product</button>
+          </div>
+          <div class="group">
+            <h3>2 · Barber Sales Goals &amp; Scale Plan <span class="opt">(only if needed)</span></h3>
+            <div class="field"><label>Is a barber performance or sales plan needed this month?</label>
+              <div class="yesno" data-yesno="sw_barber_needed"><label><input type="radio" name="sw_barber_needed" value="yes">Yes</label><label><input type="radio" name="sw_barber_needed" value="no">No</label></div>
+            </div>
+            <div data-showif="sw_barber_needed=yes" style="display:none">
+              <div class="rows" id="barberRows"></div>
+              <button type="button" class="add-btn" data-add="barber">+ Add barber plan</button>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- THIRD -->
+      <details class="collapse week-block" data-week="third">
+        <summary>Third Week of the Month</summary>
+        <div class="inner">
+          <div class="group">
+            <h3>1 · Supply Order Form</h3>
+            <p class="group-note">Add a row per supply/item. Attach receipts or order confirmations below.</p>
+            <div class="rows" id="supplyRows"></div>
+            <button type="button" class="add-btn" data-add="supply">+ Add supply / item</button>
+            <div class="uploader" data-upload="tw_supply_receipts">
+              <label class="upload-btn"><input type="file" class="upload-input" accept="image/*,application/pdf" multiple>📎 Upload receipt / order confirmation</label>
+              <div class="thumbs"></div>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- FOURTH -->
+      <details class="collapse week-block" data-week="fourth">
+        <summary>Fourth Week of the Month</summary>
+        <div class="inner">
+          <div class="group">
+            <h3>1 · Announce Next Month's Team Meeting (WhatsApp)</h3>
+            <div class="field"><label>Announcement sent?</label>
+              <div class="yesno" data-yesno="fw4_sent"><label><input type="radio" name="fw4_sent" value="yes">Yes</label><label><input type="radio" name="fw4_sent" value="no">No</label></div>
+            </div>
+            <div class="two-col">
+              <div class="field"><label>Date Sent</label><input type="date" name="fw4_date_sent"></div>
+              <div class="field"><label>Proposed Meeting Date</label><input type="date" name="fw4_meeting_date"></div>
+            </div>
+            <div class="field"><label>Proposed Meeting Time</label><input type="time" name="fw4_meeting_time"></div>
+            <div class="uploader" data-upload="fw4_whatsapp">
+              <label class="upload-btn"><input type="file" class="upload-input" accept="image/*,application/pdf" multiple>📷 Upload WhatsApp screenshot</label>
+              <div class="thumbs"></div>
+            </div>
+            <div class="field" style="margin-top:12px"><label>Notes</label><textarea name="fw4_notes" maxlength="2000"></textarea></div>
+          </div>
+          <div class="group">
+            <h3>2 · Incident Reports</h3>
+            <p class="group-note">Client falls, injuries, complaints, employee conflicts, property damage, safety concerns, etc.</p>
+            <div class="field"><label>Were there any incidents this month?</label>
+              <div class="yesno" data-yesno="fw4_incidents"><label><input type="radio" name="fw4_incidents" value="yes">Yes</label><label><input type="radio" name="fw4_incidents" value="no">No</label></div>
+            </div>
+            <div data-showif="fw4_incidents=yes" style="display:none">
+              <div class="rows" id="incidentRows"></div>
+              <button type="button" class="add-btn" data-add="incident">+ Add incident report</button>
+            </div>
+          </div>
+          <div class="group">
+            <h3>3 · One-on-One Meeting With Barber(s) <span class="opt">(only if needed)</span></h3>
+            <div class="field"><label>Was a one-on-one meeting needed this month?</label>
+              <div class="yesno" data-yesno="fw4_oneonone"><label><input type="radio" name="fw4_oneonone" value="yes">Yes</label><label><input type="radio" name="fw4_oneonone" value="no">No</label></div>
+            </div>
+            <div data-showif="fw4_oneonone=yes" style="display:none">
+              <div class="rows" id="oneononeRows"></div>
+              <button type="button" class="add-btn" data-add="oneonone">+ Add one-on-one</button>
+            </div>
+          </div>
+        </div>
+      </details>
+
+      <!-- FIFTH -->
+      <details class="collapse week-block" data-week="fifth">
+        <summary>Fifth Week of the Month (when applicable)</summary>
+        <div class="inner">
+          <p class="tbd">No specific fifth-week tasks were defined. Use the notes below for anything relevant this week.</p>
+          <div class="field"><label>Notes for this week</label><textarea name="ffw_notes" maxlength="3000"></textarea></div>
+        </div>
+      </details>
+    </section>
+
+    <!-- ============ STEP 4: MARKETING & EXPENSES ============ -->
+    <section class="step" data-step="4" data-name="Marketing & Expenses">
+      <div class="step-title"><span class="num">4</span> Marketing &amp; Expenses</div>
+      <div class="step-desc">Log promotional services and weekly expenses. Totals calculate automatically.</div>
+
+      <div class="group">
+        <h3>Marketing Services</h3>
+        <label class="check-line"><input type="checkbox" name="no_marketing" id="noMarketing"> No marketing services this week</label>
+        <div id="marketingWrap">
+          <div class="rows" id="mktRows"></div>
+          <button type="button" class="add-btn" data-add="mkt">+ Add marketing service</button>
+          <div class="totals" id="mktTotals"></div>
+        </div>
+      </div>
+
+      <div class="group">
+        <h3>Expenses</h3>
+        <div class="rows" id="expenseRows"></div>
+        <button type="button" class="add-btn" data-add="expense">+ Add expense</button>
+        <div class="totals" id="expTotals"></div>
+        <label class="check-line" style="margin-top:12px"><input type="checkbox" name="expense_confirm" id="expenseConfirm"> I confirm all expenses and receipts have been entered accurately. <span class="req">*</span></label>
+      </div>
+
+      <div class="group">
+        <h3>Hostess Hours</h3>
+        <p class="group-note">Weekly hours worked by each hostess.</p>
         <div class="rows" id="hostRows"></div>
         <button type="button" class="add-btn" data-add="host">+ Add hostess</button>
       </div>
-    </div>
+    </section>
 
-    <div class="submit-wrap">
-      <button type="submit" class="submit" id="submitBtn">Submit Report</button>
+    <!-- ============ STEP 5: ATTENDANCE ============ -->
+    <section class="step" data-step="5" data-name="Attendance">
+      <div class="step-title"><span class="num">5</span> Barber Attendance</div>
+      <div class="step-desc">Report late arrivals, early departures, and absences.</div>
+
+      <div class="group">
+        <h3>Late Arrivals &amp; Early Departures</h3>
+        <div class="field"><label>Were there any late arrivals or early departures this week?</label>
+          <div class="yesno" data-yesno="att_late"><label><input type="radio" name="att_late" value="yes">Yes</label><label><input type="radio" name="att_late" value="no">No</label></div>
+        </div>
+        <div data-showif="att_late=yes" style="display:none">
+          <div class="rows" id="lateRows"></div>
+          <button type="button" class="add-btn" data-add="late">+ Add entry</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <h3>Absent Barbers</h3>
+        <div class="field"><label>Were any barbers absent this week?</label>
+          <div class="yesno" data-yesno="att_absent"><label><input type="radio" name="att_absent" value="yes">Yes</label><label><input type="radio" name="att_absent" value="no">No</label></div>
+        </div>
+        <div data-showif="att_absent=yes" style="display:none">
+          <div class="rows" id="absentRows"></div>
+          <button type="button" class="add-btn" data-add="absent">+ Add absence</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ STEP 6: BARBER RATINGS ============ -->
+    <section class="step" data-step="6" data-name="Barber Ratings">
+      <div class="step-title"><span class="num">6</span> Barber Ratings</div>
+      <div class="step-desc">Rate each barber 1–5 (1 = Poor · 5 = Excellent). Overall calculates automatically. Add one card per barber.</div>
+      <div class="rows" id="ratingRows"></div>
+      <button type="button" class="add-btn" data-add="rating">+ Add barber</button>
+    </section>
+
+    <!-- ============ STEP 7: SHOP REPORT ============ -->
+    <section class="step" data-step="7" data-name="Shop Report">
+      <div class="step-title"><span class="num">7</span> General Shop Report</div>
+      <div class="step-desc">The overall condition of the location this week.</div>
+
+      <div class="rate-field"><label>Overall Shop Condition (1–5)</label><div class="rate-scale" data-rate="shop_condition"></div><div class="rate-legend">1 = Poor · 3 = Average · 5 = Excellent</div></div>
+      <div class="field"><label>Cleanliness Concerns</label><textarea name="shop_cleanliness" maxlength="2000"></textarea></div>
+      <div class="field"><label>Maintenance or Repair Concerns</label><textarea name="shop_maintenance" maxlength="2000"></textarea></div>
+      <div class="field"><label>Equipment Problems</label><textarea name="shop_equipment" maxlength="2000"></textarea></div>
+      <div class="field"><label>Product or Supply Shortages</label><textarea name="shop_supply" maxlength="2000"></textarea></div>
+      <div class="field"><label>Client Complaints or Feedback</label><textarea name="shop_complaints" maxlength="2000"></textarea></div>
+      <div class="field"><label>Positive Client Feedback</label><textarea name="shop_positive" maxlength="2000"></textarea></div>
+      <div class="field"><label>Team Concerns</label><textarea name="shop_team" maxlength="2000"></textarea></div>
+      <div class="field"><label>Staffing Needs</label><textarea name="shop_staffing" maxlength="2000"></textarea></div>
+      <div class="field"><label>Schedule Concerns</label><textarea name="shop_schedule" maxlength="2000"></textarea></div>
+      <div class="field"><label>Important Situations Ownership Should Know</label><textarea name="shop_ownership" maxlength="2000"></textarea></div>
+      <div class="field"><label>Assistance Needed From Ownership</label><textarea name="shop_assistance" maxlength="2000"></textarea></div>
+      <div class="field"><label>Priorities for Next Week</label><textarea name="shop_priorities" maxlength="2000"></textarea></div>
+      <div class="field"><label>General Manager Comments</label><textarea name="shop_comments" maxlength="2000"></textarea></div>
+      <div class="uploader" data-upload="shop_photos">
+        <label class="upload-btn"><input type="file" class="upload-input" accept="image/*,application/pdf" multiple>📷 Upload photos / documents</label>
+        <div class="thumbs"></div>
+      </div>
+    </section>
+
+    <!-- ============ STEP 8: REVIEW & SUBMIT ============ -->
+    <section class="step" data-step="8" data-name="Review & Submit">
+      <div class="step-title"><span class="num">8</span> Review &amp; Certify</div>
+      <div class="step-desc">Please review your report. Use “Edit” to jump back to any section.</div>
+      <div id="reviewArea"></div>
+
+      <div class="group">
+        <h3>Certification</h3>
+        <label class="check-line"><input type="checkbox" name="cert_reviewed"> I reviewed this report. <span class="req">*</span></label>
+        <label class="check-line"><input type="checkbox" name="cert_accurate"> The information provided is accurate to the best of my knowledge. <span class="req">*</span></label>
+        <label class="check-line"><input type="checkbox" name="cert_uploaded"> I uploaded the available receipts, photographs, and supporting documentation. <span class="req">*</span></label>
+        <label class="check-line"><input type="checkbox" name="cert_contact"> I understand management may contact me for clarification. <span class="req">*</span></label>
+        <div class="field" style="margin-top:12px"><label for="signature">Electronic Signature — type your full name <span class="req">*</span></label><input type="text" id="signature" name="signature" maxlength="120" autocomplete="name"></div>
+        <div class="hint">Submission date &amp; time and a reference number are generated automatically.</div>
+      </div>
+
+      <div class="error-note" id="errorNote"></div>
+      <div class="warn-note" id="warnNote"></div>
+    </section>
+
+    <!-- Wizard navigation -->
+    <div class="nav">
+      <button type="button" class="btn-prev" id="btnPrev" hidden>← Previous</button>
+      <button type="button" class="btn-next" id="btnNext">Next →</button>
+      <button type="submit" class="btn-next" id="btnSubmit" style="display:none">Submit Report</button>
     </div>
+    <div class="autosave-note" id="autosaveNote">Your progress is saved automatically on this device.</div>
   </form>
 
   <div class="card msg" id="successMsg">
     <div class="check">✅</div>
     <h2>Report Submitted</h2>
-    <p>Thanks! Your weekly report has been sent. A confirmation copy is on its way to your email.</p>
-    <button type="button" class="add-btn" style="max-width:260px;margin:14px auto 0;" onclick="location.reload()">Submit another report</button>
+    <p id="successText">Thank you! Your Weekly Manager Report has been sent to the Barber &amp; Co. office.</p>
+    <div class="refbox" id="refBox"></div>
+    <p class="hint" id="refHint">Keep this reference number for your records.</p>
+    <button type="button" class="add-btn" style="max-width:280px;margin:8px auto 0" onclick="location.reload()">Submit another report</button>
   </div>
 
   <div class="footer">Barber &amp; Co. Miami · Weekly Manager Report</div>
 </div>
 
-<script>
-  // ====== CONFIG ======
-  // Paste your Google Apps Script Web App URL between the quotes (see README.md).
-  const ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbxdQ9LTWjbvAsXvhtI9G6vkrPzCc5BCKCPp46FV6KoCgvS0dixWWbiK7YbvxjanDXF0/exec";
-  // ====================
-
-  const mktRows = document.getElementById('mktRows');
-  const hostRows = document.getElementById('hostRows');
-
-  function mktRowHTML(n) {
-    return `
-      <div class="row-num">${n}</div>
-      <button type="button" class="remove" title="Remove">&times;</button>
-      <div class="grid grid-mkt">
-        <div><span class="mini-label">Date</span><input type="date" data-k="date" /></div>
-        <div><span class="mini-label">Barber</span><input type="text" data-k="barber" /></div>
-        <div><span class="mini-label">Service</span><input type="text" data-k="service" /></div>
-        <div><span class="mini-label">Total</span><input type="text" inputmode="decimal" data-k="total" placeholder="$" /></div>
-        <div><span class="mini-label">Promo Type</span><input type="text" data-k="promo" /></div>
-      </div>`;
-  }
-  function hostRowHTML(n) {
-    return `
-      <div class="row-num">${n}</div>
-      <button type="button" class="remove" title="Remove">&times;</button>
-      <div class="grid grid-host">
-        <div><span class="mini-label">Name</span><input type="text" data-k="name" /></div>
-        <div><span class="mini-label">Hours</span><input type="text" inputmode="decimal" data-k="hours" /></div>
-      </div>`;
-  }
-
-  function addRow(type) {
-    const container = type === 'mkt' ? mktRows : hostRows;
-    const div = document.createElement('div');
-    div.className = 'row-item';
-    div.dataset.type = type;
-    container.appendChild(div);
-    renumber(type);
-  }
-  function renumber(type) {
-    const container = type === 'mkt' ? mktRows : hostRows;
-    const html = type === 'mkt' ? mktRowHTML : hostRowHTML;
-    [...container.children].forEach((el, i) => {
-      // Preserve existing input values when renumbering
-      const values = {};
-      el.querySelectorAll('input').forEach(inp => values[inp.dataset.k] = inp.value);
-      el.innerHTML = html(i + 1);
-      el.querySelectorAll('input').forEach(inp => { if (values[inp.dataset.k] !== undefined) inp.value = values[inp.dataset.k]; });
-    });
-  }
-
-  document.querySelectorAll('[data-add]').forEach(btn =>
-    btn.addEventListener('click', () => addRow(btn.dataset.add)));
-
-  document.addEventListener('click', e => {
-    if (e.target.classList.contains('remove')) {
-      const item = e.target.closest('.row-item');
-      const type = item.dataset.type;
-      item.remove();
-      renumber(type);
-    }
-  });
-
-  // Seed with a few blank rows (like the paper form)
-  for (let i = 0; i < 4; i++) addRow('mkt');
-  for (let i = 0; i < 4; i++) addRow('host');
-
-  // ====== SUBMIT ======
-  const form = document.getElementById('reportForm');
-  const errorNote = document.getElementById('errorNote');
-
-  function collectRows(container, keys) {
-    return [...container.children].map(el => {
-      const obj = {};
-      el.querySelectorAll('input').forEach(inp => obj[inp.dataset.k] = inp.value.trim());
-      return obj;
-    }).filter(row => keys.some(k => row[k])); // drop fully-empty rows
-  }
-
-  form.addEventListener('submit', async e => {
-    e.preventDefault();
-    errorNote.style.display = 'none';
-
-    const required = ['managerName', 'managerEmail', 'storeLocation', 'week'];
-    for (const name of required) {
-      const el = form.elements[name];
-      if (!el.value.trim()) {
-        errorNote.textContent = 'Please fill in all required fields marked with *.';
-        errorNote.style.display = 'block';
-        el.focus();
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-        return;
-      }
-    }
-
-    const payload = {
-      managerName: form.elements.managerName.value.trim(),
-      managerEmail: form.elements.managerEmail.value.trim(),
-      storeLocation: form.elements.storeLocation.value.trim(),
-      week: form.elements.week.value.trim(),
-      salesToDate: form.elements.salesToDate.value.trim(),
-      goal: form.elements.goal.value.trim(),
-      marketingServices: collectRows(mktRows, ['date','barber','service','total','promo']),
-      hostessHours: collectRows(hostRows, ['name','hours'])
-    };
-
-    const btn = document.getElementById('submitBtn');
-    btn.disabled = true;
-    btn.textContent = 'Submitting…';
-
-    try {
-      if (ENDPOINT_URL.startsWith('PASTE_')) {
-        throw new Error('The form is not connected yet. Add your Apps Script URL in index.html (see README).');
-      }
-      // text/plain avoids a CORS preflight; Apps Script reads e.postData.contents.
-      await fetch(ENDPOINT_URL, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(payload)
-      });
-      // no-cors responses are opaque; the backend confirms via email.
-      form.style.display = 'none';
-      document.getElementById('successMsg').classList.add('show');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (err) {
-      errorNote.textContent = err.message || 'Something went wrong. Please try again.';
-      errorNote.style.display = 'block';
-      btn.disabled = false;
-      btn.textContent = 'Submit Report';
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  });
-</script>
+<script src="app.js"></script>
 </body>
 </html>
