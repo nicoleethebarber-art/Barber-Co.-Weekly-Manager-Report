@@ -126,6 +126,75 @@
   }
 
   // =========================================================================
+  // ORDER CHECKLISTS (fixed item lists from the shop's paper forms)
+  // Each item has: Count / Order / Delivered(✓). Write-ins handled separately.
+  // =========================================================================
+  var CHECKLISTS = {
+    productOrder: {
+      groups: [
+        { name: "Level 3", items: [
+          "Deodorant", "LvL 3 Barber Clipper Spray", "LvL 3 Barber Gloves", "LvL 3 Barber Neck Strip",
+          "LvL 3 Beard Oil", "LvL 3 Black Mask", "LvL 3 Hair Conditioner", "LvL 3 Hair Shampoo",
+          "LvL 3 Hair Spray", "LvL 3 Razor Holder", "LvL 3 Styling Powder", "LvL 3 Texturizing Salt Spray"
+        ]},
+        { name: "Layrite", items: [
+          "Layrite Super Hold Pomade (brown)", "Layrite Cement Clay (black)", "Layrite Grooming Spray",
+          "Layrite Natural Matte Cream (blue)", "Layrite Travel Size Natural Matte Cream (little blue)",
+          "Layrite Travel Size Super Hold Pomade (little brown)"
+        ]}
+      ]
+    },
+    supplyOrder: {
+      groups: [
+        { name: "Bar Supplies", items: [
+          "Coffee Cups", "Sugar", "Straws", "Cocktail Napkins", "Coffee", "Plastic Cups", "Candy",
+          "Coca-Cola", "Coca Zero", "Sprite", "Ginger", "Sparkling Water"
+        ]},
+        { name: "Shop Supplies", items: [
+          "Black Towels", "White Towels", "Barbicide", "Towel Oil", "Black Mask", "Wax", "Wax Sticks", "Shaving Cream"
+        ]},
+        { name: "Liquor", items: ["Rum", "Gin", "Vodka", "Tequila", "Whiskey"] },
+        { name: "Cleaning Supplies", items: [
+          "Dish Soap", "Paper Towels", "Mouth Wash", "Sponges", "Vinegar", "Purified Water", "Windex",
+          "All Purpose Cleaner", "Garbage Bag (Black)", "Garbage Bag (White)", "Incense", "Handsoap",
+          "Floor Cleaner", "Detergent", "Toilet Paper"
+        ]}
+      ]
+    }
+  };
+
+  function buildChecklist(key, hostId) {
+    var def = CHECKLISTS[key]; var host = $("#" + hostId); if (!host) return;
+    var html = "";
+    def.groups.forEach(function (g, gi) {
+      html += '<div class="chk-group"><h4>' + escapeHtml(g.name) + "</h4>" +
+        '<div class="chk-head"><span>Item</span><span>Count</span><span>Order</span><span>✓</span></div>';
+      g.items.forEach(function (it, ii) {
+        var base = "chk_" + key + "_" + gi + "_" + ii;
+        html += '<div class="chk-row"><span class="nm">' + escapeHtml(it) + "</span>" +
+          '<input class="cctl" type="number" inputmode="numeric" min="0" name="' + base + '_count" aria-label="' + escapeHtml(it) + ' count">' +
+          '<input class="cctl" type="number" inputmode="numeric" min="0" name="' + base + '_order" aria-label="' + escapeHtml(it) + ' order">' +
+          '<input type="checkbox" name="' + base + '_delivered" aria-label="' + escapeHtml(it) + ' delivered">' +
+          "</div>";
+      });
+      html += "</div>";
+    });
+    host.innerHTML = html;
+  }
+
+  function collectChecklist(key) {
+    var def = CHECKLISTS[key]; var out = [];
+    def.groups.forEach(function (g, gi) {
+      g.items.forEach(function (it, ii) {
+        var base = "chk_" + key + "_" + gi + "_" + ii;
+        var count = fv(base + "_count"), order = fv(base + "_order"), delivered = fb(base + "_delivered");
+        if (count || order || delivered) out.push({ category: g.name, item: it, count: count, order: order, delivered: delivered ? "Yes" : "" });
+      });
+    });
+    return out;
+  }
+
+  // =========================================================================
   // REPEATABLE ROW TYPES
   // =========================================================================
   var RATE_OPTS = ["", "1", "2", "3", "4", "5"];
@@ -154,22 +223,22 @@
     ]},
     fwTimeoff: { container: "#fwTimeoffRows", fields: [
       { k: "employee", label: "Employee Name", type: "text" },
-      { k: "dates", label: "Requested Dates", type: "text" },
+      { k: "position", label: "Position", type: "text" },
+      { k: "leaveType", label: "Type of Leave", type: "select", options: ["Vacation", "Sick", "Personal", "Unpaid", "Bereavement", "Other"] },
+      { k: "startDate", label: "Start Date", type: "date" },
+      { k: "endDate", label: "End Date", type: "date" },
+      { k: "totalDays", label: "Total Days", type: "number" },
+      { k: "daysLeft", label: "Days Left (of 25/yr)", type: "number" },
+      { k: "reason", label: "Reason for Leave", type: "textarea" },
       { k: "status", label: "Status", type: "select", options: ["Approved", "Denied", "Pending"] },
-      { k: "notes", label: "Manager Notes", type: "text" }
+      { k: "approvalDate", label: "Approval Date", type: "date" },
+      { k: "comments", label: "Manager Comments", type: "textarea" }
     ]},
-    inv: { container: "#invRows", calc: true, fields: [
-      { k: "brand", label: "Brand", type: "select", options: ["Layrite", "Level 3", "Other"] },
-      { k: "product", label: "Product Name", type: "text" },
-      { k: "currentQty", label: "Current Qty", type: "number" },
-      { k: "minQty", label: "Min Desired Qty", type: "number" },
-      { k: "orderQty", label: "Qty to Order", type: "number" },
-      { k: "unitCost", label: "Unit Cost", type: "currency" },
-      { k: "totalCost", label: "Est. Total", type: "readonly" },
-      { k: "vendor", label: "Vendor / Supplier", type: "text" },
-      { k: "orderPlaced", label: "Order Placed?", type: "select", options: ["No", "Yes"] },
-      { k: "orderDate", label: "Order Date", type: "date" },
-      { k: "notes", label: "Notes", type: "text" }
+    prodMisc: { container: "#prodMiscRows", fields: [
+      { k: "item", label: "Product", type: "text" },
+      { k: "count", label: "Count", type: "number" },
+      { k: "order", label: "Order", type: "number" },
+      { k: "delivered", label: "Delivered?", type: "select", options: ["No", "Yes"] }
     ]},
     barber: { container: "#barberRows", calc: true, fields: [
       { k: "name", label: "Barber Name", type: "text" },
@@ -185,16 +254,11 @@
       { k: "followUp", label: "Follow-up Date", type: "date" },
       { k: "notes", label: "Manager Notes", type: "textarea" }
     ]},
-    supply: { container: "#supplyRows", fields: [
-      { k: "item", label: "Supply / Item Name", type: "text" },
-      { k: "category", label: "Category", type: "text" },
-      { k: "currentQty", label: "Current Qty", type: "number" },
-      { k: "needed", label: "Qty Needed", type: "number" },
-      { k: "vendor", label: "Vendor", type: "text" },
-      { k: "estCost", label: "Estimated Cost", type: "currency" },
-      { k: "orderPlaced", label: "Order Placed?", type: "select", options: ["No", "Yes"] },
-      { k: "orderDate", label: "Order Date", type: "date" },
-      { k: "notes", label: "Notes", type: "text" }
+    supplyMisc: { container: "#supplyMiscRows", fields: [
+      { k: "item", label: "Item", type: "text" },
+      { k: "count", label: "Count", type: "number" },
+      { k: "order", label: "Order", type: "number" },
+      { k: "delivered", label: "Delivered?", type: "select", options: ["No", "Yes"] }
     ]},
     incident: { container: "#incidentRows", upload: "incident_files", fields: [
       { k: "date", label: "Incident Date", type: "date" },
@@ -787,10 +851,11 @@
           } : { needed: yn("fw_hostess_needed") === "no" ? false : null }
         },
         second: {
-          inventory: collectRows("inv"),
+          productOrder: collectChecklist("productOrder"),
+          productMisc: collectRows("prodMisc"),
           barberPlan: yn("sw_barber_needed") === "yes" ? { needed: true, entries: collectRows("barber") } : { needed: yn("sw_barber_needed") === "no" ? false : null }
         },
-        third: { supplies: collectRows("supply") },
+        third: { supplyOrder: collectChecklist("supplyOrder"), supplyMisc: collectRows("supplyMisc") },
         fourth: {
           whatsapp: { sent: yn("fw4_sent"), dateSent: fv("fw4_date_sent"), meetingDate: fv("fw4_meeting_date"), meetingTime: fv("fw4_meeting_time"), notes: fv("fw4_notes") },
           incidents: yn("fw4_incidents") === "yes" ? { any: true, reports: collectRows("incident") } : { any: yn("fw4_incidents") === "no" ? false : null },
@@ -914,6 +979,8 @@
   function init() {
     buildWeeklyTasks();
     buildRatingScales();
+    buildChecklist("productOrder", "productOrder");
+    buildChecklist("supplyOrder", "supplyOrder");
     buildChips();
     setupConditionals();
     tryLogo();
@@ -929,7 +996,7 @@
     } else {
       for (var i = 0; i < 3; i++) addRow("mkt");
       for (var j = 0; j < 2; j++) addRow("host");
-      addRow("expense"); addRow("inv"); addRow("rating");
+      addRow("expense"); addRow("rating");
     }
 
     // uploaders + paint states after restore

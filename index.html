@@ -100,6 +100,17 @@
   .add-btn:active{background:var(--cream)}
   .mini-label{font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px;display:block}
 
+  /* Checklist (product / supply order) */
+  .chk-group{margin:8px 0 14px}
+  .chk-group h4{margin:10px 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--gold-dark)}
+  .chk-head,.chk-row{display:grid;grid-template-columns:1fr 58px 58px 40px;gap:6px;align-items:center}
+  .chk-head{font-size:10px;text-transform:uppercase;color:var(--muted);font-weight:700;padding:0 2px 4px;border-bottom:2px solid var(--line)}
+  .chk-head span:not(:first-child),.chk-row .cctl{text-align:center}
+  .chk-row{padding:7px 2px;border-bottom:1px solid var(--line)}
+  .chk-row .nm{font-size:13px;font-weight:600}
+  .chk-row input[type=number]{padding:9px 4px;font-size:15px;text-align:center}
+  .chk-row input[type=checkbox]{width:22px;height:22px;justify-self:center}
+
   /* Yes/No */
   .yesno{display:inline-flex;border:1.5px solid var(--line);border-radius:10px;overflow:hidden}
   .yesno label{margin:0;padding:12px 24px;cursor:pointer;font-weight:700;font-size:14px;background:#fff;min-height:46px;display:flex;align-items:center}
@@ -283,8 +294,9 @@
             <label class="check-line"><input type="checkbox" name="fw_timeoff_reviewed"> Current calendar was reviewed</label>
             <label class="check-line"><input type="checkbox" name="fw_timeoff_asked"> Barbers were asked about time off this month</label>
             <label class="mini-label">Submitted vacation / time-off requests</label>
+            <p class="group-note">Each employee has 25 vacation days per year. Requests should be submitted at least 2 weeks before the start date; approval is harder during the busy season.</p>
             <div class="rows" id="fwTimeoffRows"></div>
-            <button type="button" class="add-btn" data-add="fwTimeoff">+ Add time-off request</button>
+            <button type="button" class="add-btn" data-add="fwTimeoff">+ Add vacation / time-off request</button>
             <div class="uploader" data-upload="fw_timeoff_calendar">
               <label class="upload-btn"><input type="file" class="upload-input" accept="image/*,application/pdf" multiple>📎 Upload calendar screenshot / photo</label>
               <div class="thumbs"></div>
@@ -322,10 +334,12 @@
         <summary>Second Week of the Month</summary>
         <div class="inner">
           <div class="group">
-            <h3>1 · Product Count &amp; Orders — Layrite and Level 3</h3>
-            <p class="group-note">Add a row per product. Estimated total calculates automatically.</p>
-            <div class="rows" id="invRows"></div>
-            <button type="button" class="add-btn" data-add="inv">+ Add product</button>
+            <h3>1 · Product Order Form — Level 3 &amp; Layrite</h3>
+            <p class="group-note">Enter the current <b>Count</b> and how many to <b>Order</b> for each product. Check <b>✓</b> once delivered.</p>
+            <div id="productOrder"></div>
+            <label class="mini-label" style="margin-top:12px">Other products (write-in)</label>
+            <div class="rows" id="prodMiscRows"></div>
+            <button type="button" class="add-btn" data-add="prodMisc">+ Add other product</button>
           </div>
           <div class="group">
             <h3>2 · Barber Sales Goals &amp; Scale Plan <span class="opt">(only if needed)</span></h3>
@@ -346,10 +360,12 @@
         <div class="inner">
           <div class="group">
             <h3>1 · Supply Order Form</h3>
-            <p class="group-note">Add a row per supply/item. Attach receipts or order confirmations below.</p>
-            <div class="rows" id="supplyRows"></div>
-            <button type="button" class="add-btn" data-add="supply">+ Add supply / item</button>
-            <div class="uploader" data-upload="tw_supply_receipts">
+            <p class="group-note">Enter the current <b>Count</b> and how many to <b>Order</b> for each item. Check <b>✓</b> once delivered.</p>
+            <div id="supplyOrder"></div>
+            <label class="mini-label" style="margin-top:12px">Miscellaneous (write-in)</label>
+            <div class="rows" id="supplyMiscRows"></div>
+            <button type="button" class="add-btn" data-add="supplyMisc">+ Add item</button>
+            <div class="uploader" data-upload="tw_supply_receipts" style="margin-top:12px">
               <label class="upload-btn"><input type="file" class="upload-input" accept="image/*,application/pdf" multiple>📎 Upload receipt / order confirmation</label>
               <div class="thumbs"></div>
             </div>
