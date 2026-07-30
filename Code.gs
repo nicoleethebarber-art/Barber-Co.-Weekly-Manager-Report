@@ -457,6 +457,35 @@ function buildReportHtml_(data, ref, stamp, folderUrl) {
 }
 
 function kvHtml_(k, v) { v = clean_(v); if (!v) return ''; return '<div class="kv"><b>' + esc_(k) + '</b>' + esc_(v) + '</div>'; }
+
+/** Tag write-in rows {item,count,order,delivered} with a category for the checklist view. */
+function taggedMisc_(rows, cat) {
+  return (rows || []).map(function (r) {
+    return { category: r.category || cat, item: r.item, count: r.count, order: r.order, delivered: r.delivered };
+  });
+}
+
+/** Render order-checklist items grouped by category (Item / Count / Order / Delivered). */
+function checklistHtml_(items) {
+  items = items || [];
+  if (!items.length) return '<p class="muted">Nothing ordered.</p>';
+  var order = [], byCat = {};
+  items.forEach(function (r) {
+    var c = r.category || 'Other';
+    if (!byCat[c]) { byCat[c] = []; order.push(c); }
+    byCat[c].push(r);
+  });
+  var s = '';
+  order.forEach(function (cat) {
+    s += '<h3>' + esc_(cat) + '</h3><table><tr><th>Item</th><th>Count</th><th>Order</th><th>Delivered</th></tr>';
+    byCat[cat].forEach(function (r) {
+      var d = (r.delivered === true || r.delivered === 'Yes') ? 'Yes' : clean_(r.delivered);
+      s += '<tr><td>' + esc_(r.item) + '</td><td>' + esc_(r.count) + '</td><td>' + esc_(r.order) + '</td><td>' + esc_(d) + '</td></tr>';
+    });
+    s += '</table>';
+  });
+  return s;
+}
 function tableHtml_(rows, keys, heads) {
   rows = rows || [];
   if (!rows.length) return '<p class="muted">None reported.</p>';
@@ -476,7 +505,7 @@ function monthlyHtml_(mon) {
       kvHtml_('Feedback', tm.feedback) + kvHtml_('Decisions', tm.decisions) + kvHtml_('Responsible', tm.responsible) + kvHtml_('Due', tm.dueDate);
     var to = mon.first.timeOff || {};
     s += '<h3>Time-Off Review</h3>' + kvHtml_('Calendar Reviewed', to.reviewed ? 'Yes' : 'No') + kvHtml_('Barbers Asked', to.askedBarbers ? 'Yes' : 'No');
-    s += tableHtml_(to.requests, ['employee', 'dates', 'status', 'notes'], ['Employee', 'Dates', 'Status', 'Notes']);
+    s += tableHtml_(to.requests, ['employee', 'position', 'leaveType', 'startDate', 'endDate', 'totalDays', 'daysLeft', 'reason', 'status', 'approvalDate', 'comments'], ['Employee', 'Position', 'Type', 'Start', 'End', 'Days', 'Left', 'Reason', 'Status', 'Approved', 'Comments']);
     var he = mon.first.hostessEval || {};
     if (he.needed) s += '<h3>Hostess Evaluation</h3>' + kvHtml_('Name', he.name) + kvHtml_('Date', he.date) +
       kvHtml_('Attendance', he.attendance) + kvHtml_('Customer Service', he.customerService) + kvHtml_('Communication', he.communication) +
@@ -484,12 +513,14 @@ function monthlyHtml_(mon) {
       kvHtml_('Improvement', he.improvement) + kvHtml_('Action Plan', he.actionPlan) + kvHtml_('Follow-up', he.followUp) + kvHtml_('Comments', he.comments);
   }
   if (wk === 'second' && mon.second) {
-    s += '<h3>Product Count & Orders</h3>' + tableHtml_(mon.second.inventory, ['brand', 'product', 'currentQty', 'minQty', 'orderQty', 'unitCost', 'totalCost', 'vendor', 'orderPlaced', 'orderDate', 'notes'], ['Brand', 'Product', 'Cur', 'Min', 'Order', 'Unit', 'Total', 'Vendor', 'Placed', 'Date', 'Notes']);
+    s += '<h3>Product Order Form — Level 3 & Layrite</h3>' +
+      checklistHtml_((mon.second.productOrder || []).concat(taggedMisc_(mon.second.productMisc, 'Other')));
     var bp = mon.second.barberPlan || {};
     if (bp.needed) s += '<h3>Barber Sales / Scale Plan</h3>' + tableHtml_(bp.entries, ['name', 'currentSales', 'salesGoal', 'difference', 'improvementGoal', 'actionSteps', 'followUp'], ['Barber', 'Current', 'Goal', 'Diff', 'Improve Goal', 'Action', 'Follow-up']);
   }
   if (wk === 'third' && mon.third) {
-    s += '<h3>Supply Order Form</h3>' + tableHtml_(mon.third.supplies, ['item', 'category', 'currentQty', 'needed', 'vendor', 'estCost', 'orderPlaced', 'orderDate', 'notes'], ['Item', 'Category', 'Cur', 'Needed', 'Vendor', 'Est. Cost', 'Placed', 'Date', 'Notes']);
+    s += '<h3>Supply Order Form</h3>' +
+      checklistHtml_((mon.third.supplyOrder || []).concat(taggedMisc_(mon.third.supplyMisc, 'Miscellaneous')));
   }
   if (wk === 'fourth' && mon.fourth) {
     var wa = mon.fourth.whatsapp || {};
