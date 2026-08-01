@@ -258,6 +258,9 @@ function doPost(e) {
     var result = sendReport_(data, ref, saved.folderUrl, saved.blobs);
     updateEmailStatus_(ref, result.delivered);
 
+    // Separate, action-ready order email whenever anything needs ordering.
+    sendOrderEmail_(data, ref);
+
     cache.put(cacheKey, JSON.stringify({ ref: ref, delivered: result.delivered, folderUrl: saved.folderUrl }), 21600);
 
     return json({ status: 'success', ref: ref, emailDelivered: result.delivered, review: STATUS.PENDING });
@@ -899,6 +902,126 @@ function weekHtml_(mon, wk, alsoNote) {
 }
 
 // ===========================================================================
+// ORDER LIST — a separate, action-ready email of what needs ordering
+// ===========================================================================
+/** Collects every checklist item with an Order quantity, from any week. */
+function orderItems_(data) {
+  var mon = (data && data.monthly) || {};
+  var out = [];
+  var push = function (rows, fallbackCat) {
+    (rows || []).forEach(function (r) {
+      var qty = num_(r.order);
+      if (qty > 0) out.push({
+        category: clean_(r.category, 60) || fallbackCat,
+        item: clean_(r.item, 120),
+        count: clean_(r.count, 20),
+        order: qty,
+        delivered: (r.delivered === true || r.delivered === 'Yes') ? 'Yes' : clean_(r.delivered, 20)
+      });
+    });
+  };
+  if (mon.second) { push(mon.second.productOrder, 'Product'); push(mon.second.productMisc, 'Other products'); }
+  if (mon.third) { push(mon.third.supplyOrder, 'Supplies'); push(mon.third.supplyMisc, 'Miscellaneous'); }
+  return out;
+}
+
+function orderListHtml_(items, data, ref) {
+  var m = (data && data.manager) || {};
+  var byCat = {}, order = [];
+  items.forEach(function (r) {
+    if (!byCat[r.category]) { byCat[r.category] = []; order.push(r.category); }
+    byCat[r.category].push(r);
+  });
+  var s = '<div style="font-family:Helvetica,Arial,sans-serif;color:#1a1a1a">' +
+    '<h2 style="font-family:Georgia,serif;margin:0 0 2px">Order List</h2>' +
+    '<div style="color:#b8912a;font-style:italic;margin-bottom:10px">Barber &amp; Co. Miami</div>' +
+    '<p style="font-size:13px;margin:0 0 12px">' +
+      '<b>Location:</b> ' + esc_(m.storeLocation) + '<br>' +
+      '<b>Requested by:</b> ' + esc_(m.name) + '<br>' +
+      '<b>Week:</b> ' + esc_(m.weekStart) + (m.weekEnd ? ' to ' + esc_(m.weekEnd) : '') + '<br>' +
+      '<b>Reference:</b> ' + esc_(ref) + '</p>';
+  order.forEach(function (cat) {
+    s += '<h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:#b8912a;margin:14px 0 4px">' + esc_(cat) + '</h3>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+      '<tr><th style="border:1px solid #ccc;padding:5px 7px;background:#faf3df;text-align:left">Item</th>' +
+      '<th style="border:1px solid #ccc;padding:5px 7px;background:#faf3df;text-align:left">On Hand</th>' +
+      '<th style="border:1px solid #ccc;padding:5px 7px;background:#faf3df;text-align:left">ORDER</th>' +
+      '<th style="border:1px solid #ccc;padding:5px 7px;background:#faf3df;text-align:left">Delivered</th></tr>';
+    byCat[cat].forEach(function (r) {
+      s += '<tr><td style="border:1px solid #ccc;padding:5px 7px">' + esc_(r.item) + '</td>' +
+        '<td style="border:1px solid #ccc;padding:5px 7px">' + esc_(r.count) + '</td>' +
+        '<td style="border:1px solid #ccc;padding:5px 7px;font-weight:bold">' + esc_(String(r.order)) + '</td>' +
+        '<td style="border:1px solid #ccc;padding:5px 7px">' + esc_(r.delivered) + '</td></tr>';
+    });
+    s += '</table>';
+  });
+  s += '<p style="color:#777;font-size:11px;margin-top:16px">' + items.length + ' item(s) to order · Reference ' + esc_(ref) + '</p></div>';
+  return s;
+}
+
+function orderListText_(items, data, ref) {
+  var m = (data && data.manager) || {};
+  var L = ['ORDER LIST — Barber & Co. Miami', '',
+    'Location:     ' + clean_(m.storeLocation),
+    'Requested by: ' + clean_(m.name),
+    'Week:         ' + clean_(m.weekStart) + (m.weekEnd ? ' to ' + clean_(m.weekEnd) : ''),
+    'Reference:    ' + ref, ''];
+  var cat = '';
+  items.forEach(function (r) {
+    if (r.category !== cat) { cat = r.category; L.push('--- ' + cat + ' ---'); }
+    L.push('  ' + r.item + '  |  on hand: ' + (r.count || '-') + '  |  ORDER: ' + r.order + (r.delivered ? '  |  delivered: ' + r.delivered : ''));
+  });
+  L.push('', items.length + ' item(s) to order.');
+  return L.join('\n');
+}
+
+/** Sends the order list as its own email. Returns true when sent. */
+function sendOrderEmail_(data, ref, to) {
+  var items = orderItems_(data);
+  if (!items.length) return false;
+  var m = (data && data.manager) || {};
+  var subject = 'Order List – ' + (clean_(m.storeLocation, 60) || 'Location') +
+    ' – ' + (clean_(m.weekStart, 30) || '') + (m.weekEnd ? ' to ' + clean_(m.weekEnd, 30) : '');
+  try {
+    MailApp.sendEmail({
+      to: to || cfg('OFFICE_EMAIL'),
+      subject: subject,
+      body: orderListText_(items, data, ref),
+      htmlBody: orderListHtml_(items, data, ref),
+      name: 'Barber & Co. Orders'
+    });
+    audit_('ORDER LIST EMAILED', { ref: ref, manager: m.name, location: m.storeLocation, fileCount: items.length, status: 'SENT' });
+    return true;
+  } catch (err) {
+    logError_(err);
+    return false;
+  }
+}
+
+/** Menu: email the order list for the selected report (works for past reports). */
+function menuEmailOrderList() {
+  var ui = SpreadsheetApp.getUi();
+  var sheet = SpreadsheetApp.getActiveSheet();
+  if (sheet.getName() !== 'Responses') { ui.alert('Select a report row on the "Responses" tab first.'); return; }
+  var row = sheet.getActiveRange().getRow();
+  if (row < 2) { ui.alert('Select a report row (not the header).'); return; }
+
+  var ref = String(sheet.getRange(row, 1).getValue() || '');
+  var jsonCell = String(sheet.getRange(row, 18).getValue() || '');
+  if (!jsonCell) { ui.alert('No stored data found for that row.'); return; }
+
+  var data;
+  try { data = JSON.parse(jsonCell); }
+  catch (e) { ui.alert('Could not read the stored data for ' + ref + '.'); return; }
+
+  var items = orderItems_(data);
+  if (!items.length) { ui.alert('That report has no items with an order quantity.'); return; }
+  ui.alert(sendOrderEmail_(data, ref, cfg('OFFICE_EMAIL'))
+    ? 'Order list for ' + ref + ' (' + items.length + ' item(s)) emailed to ' + cfg('OFFICE_EMAIL') + '.'
+    : 'Could not send the order list — see the Errors tab.');
+}
+
+// ===========================================================================
 // REVIEW → APPROVAL → OFFICIAL DRIVE
 // Nothing reaches the official MER folder until an admin marks it APPROVED.
 // ===========================================================================
@@ -992,6 +1115,7 @@ function onOpen() {
     .addItem('Reject selected report', 'menuRejectSelected')
     .addItem('Request changes on selected report', 'menuRequestChanges')
     .addSeparator()
+    .addItem('Email order list for selected report', 'menuEmailOrderList')
     .addItem('File all APPROVED reports to Drive', 'menuFileAllApproved')
     .addItem('Set up manager registry', 'setupManagerRegistry')
     .addToUi();
