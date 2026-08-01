@@ -3,6 +3,9 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+<meta http-equiv="Pragma" content="no-cache" />
+<meta http-equiv="Expires" content="0" />
 <title>Barber &amp; Co. Weekly Manager Report</title>
 <style>
   :root{
@@ -584,6 +587,8 @@
   <div class="footer">Barber &amp; Co. Miami · Weekly Manager Report</div>
 </div>
 
-<script src="app.js"></script>
+<!-- Version query busts browser caches whenever the app changes.
+     Bump this value on every deploy so managers always get the latest form. -->
+<script src="app.js?v=5"></script>
 </body>
 </html>
