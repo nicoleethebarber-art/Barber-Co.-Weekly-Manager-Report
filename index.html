@@ -197,12 +197,36 @@
 </div>
 
 <div class="wrap">
+  <!-- ACCESS GATE: only authorized managers with a code may open the form -->
+  <div class="card" id="gateCard" style="display:none">
+    <div class="brand"><div class="name">BARBER &amp; CO</div><div class="miami">Miami</div></div>
+    <div class="title-bar">Weekly Manager Report</div>
+    <div style="padding:26px 20px 30px;max-width:380px;margin:0 auto">
+      <div style="text-align:center;font-size:44px">🔒</div>
+      <h2 style="text-align:center;font-family:Georgia,serif;margin:6px 0 4px">Manager Access</h2>
+      <p style="text-align:center;color:var(--muted);font-size:13.5px;margin:0 0 18px">
+        Enter your 6-digit access code to open the report.
+      </p>
+      <div class="field">
+        <label for="accessCode">Access Code</label>
+        <input type="text" id="accessCode" inputmode="numeric" autocomplete="one-time-code"
+               maxlength="6" placeholder="••••••"
+               style="text-align:center;letter-spacing:10px;font-size:26px;font-weight:800;padding:14px 12px">
+      </div>
+      <div class="error-note" id="gateError"></div>
+      <button type="button" class="submit" id="gateBtn" style="width:100%">Unlock Report</button>
+      <p style="text-align:center;color:var(--muted);font-size:12px;margin-top:14px">
+        Codes are issued by Barber &amp; Co. management. Don't share your code.
+      </p>
+    </div>
+  </div>
+
   <div class="restore-banner" id="restoreBanner">
     <span>📝 We restored your unsaved report from this device.</span>
     <button type="button" id="discardDraft">Start fresh</button>
   </div>
 
-  <form id="reportForm" class="card" novalidate autocomplete="on">
+  <form id="reportForm" class="card" novalidate autocomplete="on" style="display:none">
     <div class="brand" id="brandHeader">
       <div class="name">BARBER &amp; CO</div><div class="miami">Miami</div>
     </div>
