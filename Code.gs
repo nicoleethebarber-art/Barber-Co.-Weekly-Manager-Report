@@ -495,10 +495,29 @@ function tableHtml_(rows, keys, heads) {
   });
   return s + '</table>';
 }
+/** True if an object/array holds anything a manager actually filled in. */
+function hasData_(v) {
+  if (v == null || v === '' || v === false) return false;
+  if (Array.isArray(v)) return v.some(hasData_);
+  if (typeof v === 'object') return Object.keys(v).some(function (k) { return k !== 'needed' && k !== 'any' && hasData_(v[k]); });
+  return true;
+}
+
 function monthlyHtml_(mon) {
   var wk = mon.weekOfMonth;
   if (!wk) return '';
-  var s = '<h2>Week-of-Month Tasks (' + esc_(wk) + ' week)</h2>';
+  var s = '<h2>Week-of-Month Tasks (' + esc_(wk) + ' week selected)</h2>';
+  s += weekHtml_(mon, wk, false);
+  // Also print any OTHER week the manager filled in — a late submission often
+  // has a prior week's tasks completed under a later week selection.
+  ['first', 'second', 'third', 'fourth', 'fifth'].forEach(function (w) {
+    if (w !== wk && hasData_(mon[w])) s += weekHtml_(mon, w, true);
+  });
+  return s;
+}
+
+function weekHtml_(mon, wk, alsoNote) {
+  var s = alsoNote ? '<h3 style="color:#b8912a">Also completed — ' + esc_(wk) + ' week tasks</h3>' : '';
   if (wk === 'first' && mon.first) {
     var tm = mon.first.teamMeeting || {};
     s += '<h3>Team Meeting</h3>' + kvHtml_('Date', tm.date) + kvHtml_('Attended', tm.attendees) + kvHtml_('Summary', tm.summary) +
