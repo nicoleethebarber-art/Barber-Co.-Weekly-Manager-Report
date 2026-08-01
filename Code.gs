@@ -993,8 +993,14 @@ function onOpen() {
     .addItem('Request changes on selected report', 'menuRequestChanges')
     .addSeparator()
     .addItem('File all APPROVED reports to Drive', 'menuFileAllApproved')
-    .addItem('Set up manager registry', 'ensureManagerSheet_')
+    .addItem('Set up manager registry', 'setupManagerRegistry')
     .addToUi();
+}
+
+/** Menu-safe wrapper (Apps Script menus cannot call private functions). */
+function setupManagerRegistry() {
+  ensureManagerSheet_();
+  SpreadsheetApp.getUi().alert('Manager registry is ready. Open the "Authorized Managers" tab to view or change access codes.');
 }
 
 function selectedRef_() {
