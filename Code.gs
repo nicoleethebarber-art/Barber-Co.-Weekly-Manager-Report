@@ -154,8 +154,58 @@ function readToken_(token) {
 // ===========================================================================
 // ENTRY POINTS
 // ===========================================================================
-function doGet() {
+function doGet(e) {
+  var p = (e && e.parameter) || {};
+  // One-click approve / reject straight from the notification email.
+  if (p.a === 'approve' || p.a === 'reject') return handleDecision_(p);
   return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report' });
+}
+
+// ---- Signed approval links -------------------------------------------------
+function decisionSig_(ref, action) {
+  return Utilities.base64EncodeWebSafe(
+    Utilities.computeHmacSha256Signature(action + '|' + ref, tokenSecret_())).slice(0, 32);
+}
+function decisionUrl_(ref, action) {
+  var base;
+  try { base = ScriptApp.getService().getUrl(); } catch (err) { return ''; }
+  if (!base) return '';
+  return base + '?a=' + action + '&ref=' + encodeURIComponent(ref) + '&s=' + encodeURIComponent(decisionSig_(ref, action));
+}
+
+/** Handles an approve/reject click. Signature-protected, so links can't be guessed. */
+function handleDecision_(p) {
+  var ref = clean_(p.ref, 40);
+  var action = p.a === 'approve' ? 'approve' : 'reject';
+  if (!ref || p.s !== decisionSig_(ref, action)) {
+    return decisionPage_('Link not valid', 'This approval link is not valid or has been altered. Please approve from the spreadsheet instead.', false);
+  }
+  try {
+    if (action === 'reject') {
+      setReviewStatus_(ref, STATUS.REJECTED);
+      audit_('REJECTED', { ref: ref, status: STATUS.REJECTED, detail: 'Rejected via email link' });
+      return decisionPage_('Report rejected', ref + ' was marked REJECTED. Nothing was filed to the official Drive folder.', true);
+    }
+    setReviewStatus_(ref, STATUS.APPROVED);
+    audit_('APPROVED', { ref: ref, status: STATUS.APPROVED, detail: 'Approved via email link' });
+    var result = fileApproved_(ref);
+    return decisionPage_('Report approved', ref + ' was approved. ' + result, true);
+  } catch (err) {
+    logError_(err);
+    return decisionPage_('Something went wrong', 'The decision could not be completed. Please try from the spreadsheet.', false);
+  }
+}
+
+function decisionPage_(title, message, good) {
+  var color = good ? '#1f8a4c' : '#a3271a';
+  return HtmlService.createHtmlOutput(
+    '<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;max-width:520px;margin:60px auto;text-align:center;padding:0 20px">' +
+    '<div style="font-family:Georgia,serif;font-size:30px;font-weight:800;letter-spacing:1px">BARBER &amp; CO</div>' +
+    '<div style="color:#b8912a;font-style:italic;font-size:20px;margin-bottom:24px">Miami</div>' +
+    '<div style="font-size:46px">' + (good ? '&#9989;' : '&#9888;&#65039;') + '</div>' +
+    '<h2 style="color:' + color + ';margin:10px 0 8px">' + esc_(title) + '</h2>' +
+    '<p style="color:#555;font-size:15px;line-height:1.5">' + esc_(message) + '</p>' +
+    '</div>').setTitle(title);
 }
 
 function doPost(e) {
@@ -258,6 +308,9 @@ function doPost(e) {
     var result = sendReport_(data, ref, saved.folderUrl, saved.blobs);
     updateEmailStatus_(ref, result.delivered);
 
+    // Separate, action-ready order email whenever anything needs ordering.
+    sendOrderEmail_(data, ref);
+
     cache.put(cacheKey, JSON.stringify({ ref: ref, delivered: result.delivered, folderUrl: saved.folderUrl }), 21600);
 
     return json({ status: 'success', ref: ref, emailDelivered: result.delivered, review: STATUS.PENDING });
@@ -322,10 +375,33 @@ function authorize_(data) {
 function json(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
+/**
+ * Builds a reference like BC-20260731-92F16 and guarantees it is unique in the
+ * sheet. Client-supplied ids can repeat (shared devices, restored drafts), so
+ * a collision gets a fresh random tail rather than reusing another report's
+ * reference.
+ */
 function makeRef_(now, subId) {
   var d = Utilities.formatDate(now, tz_(), 'yyyyMMdd');
-  var tail = String(subId).replace(/[^A-Za-z0-9]/g, '').slice(-5).toUpperCase() || Math.floor(Math.random() * 1e5);
-  return 'BC-' + d + '-' + tail;
+  var tail = String(subId).replace(/[^A-Za-z0-9]/g, '').slice(-5).toUpperCase();
+  if (tail.length < 5) tail = randomTail_();
+  var ref = 'BC-' + d + '-' + tail;
+  for (var i = 0; i < 8 && refExists_(ref); i++) ref = 'BC-' + d + '-' + randomTail_();
+  return ref;
+}
+function randomTail_() {
+  var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', s = '';
+  for (var i = 0; i < 5; i++) s += chars.charAt(Math.floor(Math.random() * chars.length));
+  return s;
+}
+function refExists_(ref) {
+  try {
+    var sheet = getSpreadsheet_().getSheetByName('Responses');
+    if (!sheet || sheet.getLastRow() < 2) return false;
+    var vals = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (var i = 0; i < vals.length; i++) if (String(vals[i][0]) === ref) return true;
+    return false;
+  } catch (e) { return false; }
 }
 function tz_() { return Session.getScriptTimeZone() || 'America/New_York'; }
 function sanitizeToken_(s) { return String(s == null ? '' : s).replace(/[^A-Za-z0-9\-]/g, '').slice(0, 60); }
@@ -633,7 +709,7 @@ function sendReport_(data, ref, folderUrl, blobs) {
       replyTo: (m.contact && /@/.test(m.contact)) ? m.contact : office,
       subject: subject,
       body: body,
-      htmlBody: html + emailFooterHtml_(ref, folderUrl, linkOnly),
+      htmlBody: decisionButtonsHtml_(ref) + html + emailFooterHtml_(ref, folderUrl, linkOnly),
       attachments: attachments,
       name: 'Barber & Co. Manager Reports'
     });
@@ -675,6 +751,17 @@ function dataToBlobs_(data) {
     });
   });
   return out;
+}
+
+/** Approve / Reject buttons shown at the top of the office notification email. */
+function decisionButtonsHtml_(ref) {
+  var ok = decisionUrl_(ref, 'approve'), no = decisionUrl_(ref, 'reject');
+  if (!ok) return '';
+  return '<div style="font-family:Helvetica,Arial,sans-serif;background:#faf6e8;border:1px solid #e0b73f;border-radius:10px;padding:16px;margin:0 0 18px;text-align:center">' +
+    '<div style="font-size:13px;color:#555;margin-bottom:10px"><b>Status: PENDING REVIEW</b> — this report has <u>not</u> been filed to the official Drive folder yet.</div>' +
+    '<a href="' + ok + '" style="display:inline-block;background:#1f8a4c;color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:8px;margin:4px">✅ Approve &amp; File</a>' +
+    '<a href="' + no + '" style="display:inline-block;background:#a3271a;color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:8px;margin:4px">✕ Reject</a>' +
+    '</div>';
 }
 
 function emailFooterHtml_(ref, folderUrl, linkOnly) {
@@ -899,6 +986,126 @@ function weekHtml_(mon, wk, alsoNote) {
 }
 
 // ===========================================================================
+// ORDER LIST — a separate, action-ready email of what needs ordering
+// ===========================================================================
+/** Collects every checklist item with an Order quantity, from any week. */
+function orderItems_(data) {
+  var mon = (data && data.monthly) || {};
+  var out = [];
+  var push = function (rows, fallbackCat) {
+    (rows || []).forEach(function (r) {
+      var qty = num_(r.order);
+      if (qty > 0) out.push({
+        category: clean_(r.category, 60) || fallbackCat,
+        item: clean_(r.item, 120),
+        count: clean_(r.count, 20),
+        order: qty,
+        delivered: (r.delivered === true || r.delivered === 'Yes') ? 'Yes' : clean_(r.delivered, 20)
+      });
+    });
+  };
+  if (mon.second) { push(mon.second.productOrder, 'Product'); push(mon.second.productMisc, 'Other products'); }
+  if (mon.third) { push(mon.third.supplyOrder, 'Supplies'); push(mon.third.supplyMisc, 'Miscellaneous'); }
+  return out;
+}
+
+function orderListHtml_(items, data, ref) {
+  var m = (data && data.manager) || {};
+  var byCat = {}, order = [];
+  items.forEach(function (r) {
+    if (!byCat[r.category]) { byCat[r.category] = []; order.push(r.category); }
+    byCat[r.category].push(r);
+  });
+  var s = '<div style="font-family:Helvetica,Arial,sans-serif;color:#1a1a1a">' +
+    '<h2 style="font-family:Georgia,serif;margin:0 0 2px">Order List</h2>' +
+    '<div style="color:#b8912a;font-style:italic;margin-bottom:10px">Barber &amp; Co. Miami</div>' +
+    '<p style="font-size:13px;margin:0 0 12px">' +
+      '<b>Location:</b> ' + esc_(m.storeLocation) + '<br>' +
+      '<b>Requested by:</b> ' + esc_(m.name) + '<br>' +
+      '<b>Week:</b> ' + esc_(m.weekStart) + (m.weekEnd ? ' to ' + esc_(m.weekEnd) : '') + '<br>' +
+      '<b>Reference:</b> ' + esc_(ref) + '</p>';
+  order.forEach(function (cat) {
+    s += '<h3 style="font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:#b8912a;margin:14px 0 4px">' + esc_(cat) + '</h3>' +
+      '<table style="width:100%;border-collapse:collapse;font-size:12px">' +
+      '<tr><th style="border:1px solid #ccc;padding:5px 7px;background:#faf3df;text-align:left">Item</th>' +
+      '<th style="border:1px solid #ccc;padding:5px 7px;background:#faf3df;text-align:left">On Hand</th>' +
+      '<th style="border:1px solid #ccc;padding:5px 7px;background:#faf3df;text-align:left">ORDER</th>' +
+      '<th style="border:1px solid #ccc;padding:5px 7px;background:#faf3df;text-align:left">Delivered</th></tr>';
+    byCat[cat].forEach(function (r) {
+      s += '<tr><td style="border:1px solid #ccc;padding:5px 7px">' + esc_(r.item) + '</td>' +
+        '<td style="border:1px solid #ccc;padding:5px 7px">' + esc_(r.count) + '</td>' +
+        '<td style="border:1px solid #ccc;padding:5px 7px;font-weight:bold">' + esc_(String(r.order)) + '</td>' +
+        '<td style="border:1px solid #ccc;padding:5px 7px">' + esc_(r.delivered) + '</td></tr>';
+    });
+    s += '</table>';
+  });
+  s += '<p style="color:#777;font-size:11px;margin-top:16px">' + items.length + ' item(s) to order · Reference ' + esc_(ref) + '</p></div>';
+  return s;
+}
+
+function orderListText_(items, data, ref) {
+  var m = (data && data.manager) || {};
+  var L = ['ORDER LIST — Barber & Co. Miami', '',
+    'Location:     ' + clean_(m.storeLocation),
+    'Requested by: ' + clean_(m.name),
+    'Week:         ' + clean_(m.weekStart) + (m.weekEnd ? ' to ' + clean_(m.weekEnd) : ''),
+    'Reference:    ' + ref, ''];
+  var cat = '';
+  items.forEach(function (r) {
+    if (r.category !== cat) { cat = r.category; L.push('--- ' + cat + ' ---'); }
+    L.push('  ' + r.item + '  |  on hand: ' + (r.count || '-') + '  |  ORDER: ' + r.order + (r.delivered ? '  |  delivered: ' + r.delivered : ''));
+  });
+  L.push('', items.length + ' item(s) to order.');
+  return L.join('\n');
+}
+
+/** Sends the order list as its own email. Returns true when sent. */
+function sendOrderEmail_(data, ref, to) {
+  var items = orderItems_(data);
+  if (!items.length) return false;
+  var m = (data && data.manager) || {};
+  var subject = 'Order List – ' + (clean_(m.storeLocation, 60) || 'Location') +
+    ' – ' + (clean_(m.weekStart, 30) || '') + (m.weekEnd ? ' to ' + clean_(m.weekEnd, 30) : '');
+  try {
+    MailApp.sendEmail({
+      to: to || cfg('OFFICE_EMAIL'),
+      subject: subject,
+      body: orderListText_(items, data, ref),
+      htmlBody: orderListHtml_(items, data, ref),
+      name: 'Barber & Co. Orders'
+    });
+    audit_('ORDER LIST EMAILED', { ref: ref, manager: m.name, location: m.storeLocation, fileCount: items.length, status: 'SENT' });
+    return true;
+  } catch (err) {
+    logError_(err);
+    return false;
+  }
+}
+
+/** Menu: email the order list for the selected report (works for past reports). */
+function menuEmailOrderList() {
+  var ui = SpreadsheetApp.getUi();
+  var sheet = SpreadsheetApp.getActiveSheet();
+  if (sheet.getName() !== 'Responses') { ui.alert('Select a report row on the "Responses" tab first.'); return; }
+  var row = sheet.getActiveRange().getRow();
+  if (row < 2) { ui.alert('Select a report row (not the header).'); return; }
+
+  var ref = String(sheet.getRange(row, 1).getValue() || '');
+  var jsonCell = String(sheet.getRange(row, 18).getValue() || '');
+  if (!jsonCell) { ui.alert('No stored data found for that row.'); return; }
+
+  var data;
+  try { data = JSON.parse(jsonCell); }
+  catch (e) { ui.alert('Could not read the stored data for ' + ref + '.'); return; }
+
+  var items = orderItems_(data);
+  if (!items.length) { ui.alert('That report has no items with an order quantity.'); return; }
+  ui.alert(sendOrderEmail_(data, ref, cfg('OFFICE_EMAIL'))
+    ? 'Order list for ' + ref + ' (' + items.length + ' item(s)) emailed to ' + cfg('OFFICE_EMAIL') + '.'
+    : 'Could not send the order list — see the Errors tab.');
+}
+
+// ===========================================================================
 // REVIEW → APPROVAL → OFFICIAL DRIVE
 // Nothing reaches the official MER folder until an admin marks it APPROVED.
 // ===========================================================================
@@ -992,7 +1199,10 @@ function onOpen() {
     .addItem('Reject selected report', 'menuRejectSelected')
     .addItem('Request changes on selected report', 'menuRequestChanges')
     .addSeparator()
+    .addItem('Email order list for selected report', 'menuEmailOrderList')
     .addItem('File all APPROVED reports to Drive', 'menuFileAllApproved')
+    .addSeparator()
+    .addItem('Remove junk rows (code checks)', 'menuCleanupJunkRows')
     .addItem('Set up manager registry', 'setupManagerRegistry')
     .addToUi();
 }
@@ -1036,6 +1246,35 @@ function menuRequestChanges() {
   audit_('CHANGES REQUESTED', { ref: ref, status: STATUS.CHANGES });
   ui.alert(ref + ' marked CHANGES REQUESTED.');
 }
+/**
+ * Removes rows that were never real reports — access-code checks that the
+ * previous backend logged by mistake. Only deletes rows with no manager name
+ * AND stored data that is a verify request, so real reports are never touched.
+ */
+function menuCleanupJunkRows() {
+  var ui = SpreadsheetApp.getUi();
+  var sheet = getSpreadsheet_().getSheetByName('Responses');
+  if (!sheet || sheet.getLastRow() < 2) { ui.alert('Nothing to clean up.'); return; }
+
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 18).getValues();
+  var doomed = [];
+  for (var i = 0; i < rows.length; i++) {
+    var manager = String(rows[i][2] || '').trim();
+    var json = String(rows[i][17] || '');
+    if (!manager && /"action"\s*:\s*"verify"/.test(json)) doomed.push(i + 2);
+  }
+  if (!doomed.length) { ui.alert('No junk rows found. Nothing was changed.'); return; }
+
+  var resp = ui.alert('Remove ' + doomed.length + ' junk row(s)?',
+    'These rows contain access-code checks, not reports (rows: ' + doomed.join(', ') + ').\n\nReal reports will not be touched.',
+    ui.ButtonSet.YES_NO);
+  if (resp !== ui.Button.YES) return;
+
+  for (var j = doomed.length - 1; j >= 0; j--) sheet.deleteRow(doomed[j]);
+  audit_('JUNK ROWS REMOVED', { fileCount: doomed.length, status: 'CLEANUP', detail: 'Rows: ' + doomed.join(', ') });
+  ui.alert('Removed ' + doomed.length + ' junk row(s).');
+}
+
 function menuFileAllApproved() {
   var sheet = getSpreadsheet_().getSheetByName('Responses');
   if (!sheet || sheet.getLastRow() < 2) return;
