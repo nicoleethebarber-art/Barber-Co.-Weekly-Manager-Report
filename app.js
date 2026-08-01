@@ -49,6 +49,18 @@
   var uploads = {};
   var dirty = false;
 
+  // ---- Access session (set after a valid 6-digit code) ---------------------
+  var SESSION_KEY = "barberco_session_v1";
+  var session = null; // { token, name, location }
+  function loadSession() {
+    try {
+      var s = JSON.parse(sessionStorage.getItem(SESSION_KEY) || "null");
+      return (s && s.token) ? s : null;
+    } catch (e) { return null; }
+  }
+  function saveSession(s) { try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch (e) {} }
+  function clearSession() { try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {} }
+
   // =========================================================================
   // WEEKLY TASKS
   // =========================================================================
@@ -819,6 +831,7 @@
     var yn = function (n) { return fv(n); };
     return {
       submissionId: submissionId,
+      token: session ? session.token : "",
       hp: fv("company_website"),
       completedDate: fv("completedDate"),
       submittedAtClient: new Date().toISOString(),
@@ -924,6 +937,11 @@
           clearDraft(); dirty = false;
           try { sessionStorage.removeItem(SUBMIT_ID_KEY); } catch (e) {}
           showSuccess(data.ref || "", data.emailDelivered !== false, data.emailDelivered === false);
+        } else if (data && /access code|session has expired/i.test(data.message || "")) {
+          // Session no longer valid — send them back to the code screen.
+          clearSession();
+          setSubmitting(false);
+          showError((data.message || "Your session expired.") + " Your answers are saved on this device.");
         } else {
           throw new Error((data && data.message) || "Server error");
         }
@@ -976,7 +994,80 @@
   // =========================================================================
   // INIT
   // =========================================================================
+  // =========================================================================
+  // ACCESS GATE — verify the 6-digit code before revealing the form
+  // =========================================================================
+  function showGate() {
+    $("#gateCard").style.display = "";
+    form.style.display = "none";
+    var btn = $("#gateBtn"), input = $("#accessCode"), err = $("#gateError");
+
+    function fail(msg) {
+      err.textContent = msg; err.style.display = "block";
+      btn.disabled = false; btn.textContent = "Unlock Report";
+    }
+    function attempt() {
+      var code = String(input.value || "").replace(/[^0-9]/g, "");
+      err.style.display = "none";
+      if (code.length !== 6) { fail("Please enter your 6-digit access code."); return; }
+      if (ENDPOINT_URL.indexOf("PASTE_") === 0) { fail("The form isn't connected yet (see README)."); return; }
+      btn.disabled = true; btn.textContent = "Checking…";
+
+      fetch(ENDPOINT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "verify", code: code })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d && d.status === "success" && d.token) {
+            session = { token: d.token, name: (d.manager || {}).name || "", location: (d.manager || {}).location || "" };
+            saveSession(session);
+            $("#gateCard").style.display = "none";
+            form.style.display = "";
+            startForm();
+          } else {
+            fail((d && d.message) || "That access code is not recognized.");
+          }
+        })
+        .catch(function () { fail("Couldn't reach the server. Check your connection and try again."); });
+    }
+
+    btn.addEventListener("click", attempt);
+    input.addEventListener("keydown", function (e) { if (e.key === "Enter") attempt(); });
+    input.focus();
+  }
+
+  /** Lock identity fields to the verified manager. */
+  function applyIdentity() {
+    if (!session) return;
+    if (session.name) {
+      form.elements.managerName.value = session.name;
+      form.elements.managerName.readOnly = true;
+      form.elements.managerName.style.background = "#f2efe9";
+    }
+    if (session.location) {
+      var sel = form.elements.storeLocation;
+      var found = false;
+      Array.prototype.slice.call(sel.options).forEach(function (o) { if (o.value === session.location) found = true; });
+      if (!found && session.location) { var o = document.createElement("option"); o.textContent = session.location; sel.appendChild(o); }
+      sel.value = session.location;
+      // Restrict to the assigned location only.
+      Array.prototype.slice.call(sel.options).forEach(function (opt) {
+        if (opt.value && opt.value !== session.location) opt.disabled = true;
+      });
+      sel.dispatchEvent(new Event("change"));
+    }
+  }
+
   function init() {
+    session = loadSession();
+    if (!session) { showGate(); return; }
+    form.style.display = "";
+    startForm();
+  }
+
+  function startForm() {
     buildWeeklyTasks();
     buildRatingScales();
     buildChecklist("productOrder", "productOrder");
@@ -1008,6 +1099,7 @@
     if (form.elements.weekOfMonth.value) form.elements.weekOfMonth.dispatchEvent(new Event("change"));
     $("#noMarketing").dispatchEvent(new Event("change"));
 
+    applyIdentity();
     attachCurrency(document);
     updateTotals();
 

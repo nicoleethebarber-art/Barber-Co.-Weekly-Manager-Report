@@ -21,16 +21,134 @@
 // ---- Configuration keys (Script Properties) --------------------------------
 var DEFAULTS = {
   OFFICE_EMAIL: 'info@barberandco.miami',
-  DRIVE_FOLDER_ID: '',        // parent folder for uploads/PDFs (auto-created if blank)
+  ADMIN_EMAIL: '',            // security alerts (falls back to OFFICE_EMAIL)
+  DRIVE_FOLDER_ID: '',        // PRIVATE staging parent (auto-created if blank)
+  OFFICIAL_FOLDER_ID: '',     // official MER folder — files land here only after APPROVAL
   SHEET_ID: '',               // spreadsheet to log to (uses bound/active or auto-created if blank)
-  RATE_LIMIT_PER_MIN: '15',   // max submissions per minute across the form
+  RATE_LIMIT_PER_MIN: '15',   // global submissions per minute (bot guard)
   SEND_CONFIRMATION: 'true',  // email the manager a confirmation copy
-  MAX_EMAIL_ATTACH_MB: '20'   // if attachments exceed this, send Drive links instead
+  MAX_EMAIL_ATTACH_MB: '20',  // if attachments exceed this, send Drive links instead
+
+  // ---- Access control & upload protection ----
+  REQUIRE_ACCESS_CODE: 'true',   // managers must enter their 6-digit code
+  MAX_REPORTS_PER_HOUR: '3',     // per manager
+  MAX_FILES: '20',               // attachments per report
+  MAX_FILE_MB: '10',             // per file
+  MAX_TOTAL_MB: '50',            // all attachments combined
+  MAX_CODE_ATTEMPTS: '5'         // wrong codes before temporary lockout
+};
+
+// Only these formats are accepted. Everything else is rejected outright.
+var ALLOWED_EXT = ['pdf', 'jpg', 'jpeg', 'png', 'heic'];
+var ALLOWED_MIME = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png', 'image/heic', 'image/heif'];
+var BLOCKED_EXT = ['exe', 'dmg', 'app', 'bat', 'cmd', 'com', 'js', 'jse', 'vbs', 'scr', 'msi', 'zip', 'rar', '7z', 'tar', 'gz',
+  'docm', 'xlsm', 'pptm', 'dotm', 'xlam', 'jar', 'sh', 'ps1', 'apk', 'deb', 'pkg'];
+
+// Submission lifecycle statuses.
+var STATUS = {
+  RECEIVED: 'SUBMISSION RECEIVED',
+  SCREENING: 'SECURITY SCREENING',
+  QUARANTINED: 'QUARANTINED',
+  PENDING: 'PENDING REVIEW',
+  CHANGES: 'CHANGES REQUESTED',
+  REJECTED: 'REJECTED',
+  APPROVED: 'APPROVED',
+  UPLOAD_PENDING: 'DRIVE UPLOAD PENDING',
+  COMPLETED: 'COMPLETED',
+  FAILED: 'EXECUTION FAILED'
 };
 
 function cfg(key) {
   var v = PropertiesService.getScriptProperties().getProperty(key);
   return (v === null || v === undefined || v === '') ? DEFAULTS[key] : v;
+}
+
+// ===========================================================================
+// AUTHORIZED MANAGER REGISTRY  (private tab: "Authorized Managers")
+// ===========================================================================
+var MGR_HEADERS = ['Manager Name', 'Access Code', 'Assigned Location', 'Role', 'Status', 'Email (optional)', 'Notes'];
+
+/** Creates the registry on first run, seeded with the four managers. */
+function ensureManagerSheet_() {
+  var ss = getSpreadsheet_();
+  var sh = ss.getSheetByName('Authorized Managers');
+  if (sh) return sh;
+  sh = ss.insertSheet('Authorized Managers');
+  sh.appendRow(MGR_HEADERS);
+  sh.getRange(1, 1, 1, MGR_HEADERS.length).setFontWeight('bold');
+  sh.setFrozenRows(1);
+  // Assigned Location: exact location name, or ALL. Role: Admin may approve reports.
+  [['Nicole', '481902', 'ALL', 'Admin', 'Active', '', 'Administrator — all locations'],
+   ['Dario', '730514', 'ALL', 'Admin', 'Active', '', 'Owner — all locations (manages Pinecrest)'],
+   ['Krystal', '619473', 'ALL', 'Admin', 'Active', '', 'Area manager — all locations'],
+   ['Juan', '265837', 'Miami / Edgewater', 'Manager', 'Active', '', 'Edgewater manager']].forEach(function (r) { sh.appendRow(r); });
+  sh.getRange(2, 2, 4, 1).setNumberFormat('@'); // keep leading zeros
+  return sh;
+}
+
+/** Look up a manager by access code. Returns null when unknown/inactive. */
+function lookupByCode_(code) {
+  code = String(code == null ? '' : code).replace(/[^0-9]/g, '');
+  if (!code) return null;
+  var sh = ensureManagerSheet_();
+  if (sh.getLastRow() < 2) return null;
+  var rows = sh.getRange(2, 1, sh.getLastRow() - 1, MGR_HEADERS.length).getValues();
+  for (var i = 0; i < rows.length; i++) {
+    var rowCode = String(rows[i][1]).replace(/[^0-9]/g, '');
+    if (rowCode && rowCode === code) {
+      var status = String(rows[i][4] || '').trim().toLowerCase();
+      if (status && status !== 'active') return { inactive: true, name: clean_(rows[i][0], 80) };
+      var loc = clean_(rows[i][2], 80);
+      return {
+        name: clean_(rows[i][0], 80),
+        location: (loc.toUpperCase() === 'ALL') ? '' : loc,   // '' = any location
+        isAdmin: String(rows[i][3] || '').trim().toLowerCase() === 'admin',
+        email: clean_(rows[i][5], 120),
+        row: i + 2
+      };
+    }
+  }
+  return null;
+}
+
+/** Per-code lockout after repeated wrong codes. */
+function codeAttemptBlocked_(fingerprint) {
+  var cache = CacheService.getScriptCache();
+  var n = parseInt(cache.get('att_' + fingerprint) || '0', 10);
+  return n >= parseInt(cfg('MAX_CODE_ATTEMPTS'), 10);
+}
+function noteBadCode_(fingerprint) {
+  var cache = CacheService.getScriptCache();
+  var key = 'att_' + fingerprint;
+  var n = parseInt(cache.get(key) || '0', 10) + 1;
+  cache.put(key, String(n), 1800); // 30-minute lockout window
+  return n;
+}
+function clearBadCodes_(fingerprint) { CacheService.getScriptCache().remove('att_' + fingerprint); }
+
+// ---- Session token (so the code isn't re-sent with every request) ----------
+function tokenSecret_() {
+  var p = PropertiesService.getScriptProperties();
+  var s = p.getProperty('TOKEN_SECRET');
+  if (!s) { s = Utilities.getUuid() + Utilities.getUuid(); p.setProperty('TOKEN_SECRET', s); }
+  return s;
+}
+function makeToken_(mgr) {
+  var payload = [mgr.name, mgr.location || '', String(Date.now() + 12 * 3600 * 1000)].join('|');
+  var sig = Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(payload, tokenSecret_()));
+  return Utilities.base64EncodeWebSafe(payload) + '.' + sig;
+}
+function readToken_(token) {
+  try {
+    var parts = String(token).split('.');
+    if (parts.length !== 2) return null;
+    var payload = Utilities.newBlob(Utilities.base64DecodeWebSafe(parts[0])).getDataAsString();
+    var expect = Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(payload, tokenSecret_()));
+    if (expect !== parts[1]) return null;
+    var f = payload.split('|');
+    if (parseInt(f[2], 10) < Date.now()) return null;
+    return { name: f[0], location: f[1] };
+  } catch (e) { return null; }
 }
 
 // ===========================================================================
@@ -49,6 +167,51 @@ function doPost(e) {
 
     // 2) Rate limit
     if (isRateLimited_()) return json({ status: 'error', message: 'Too many submissions right now. Please wait a moment and try again.' });
+
+    // 2a) ACCESS CODE VERIFICATION (action=verify) — unlocks the form.
+    if (data.action === 'verify') return handleVerify_(data);
+
+    // 2b) Every submission must carry a valid session token or access code.
+    var auth = authorize_(data);
+    if (!auth.ok) {
+      audit_('SUBMISSION BLOCKED', { verification: 'FAILED', detail: auth.message, status: STATUS.REJECTED });
+      return json({ status: 'error', message: auth.message });
+    }
+    var mgr = auth.manager;
+
+    // 2c) Identity & location are taken from the registry — never from the form.
+    data.manager = data.manager || {};
+    var requested = clean_(data.manager.storeLocation, 80);
+    if (mgr.location && requested && requested.toLowerCase() !== mgr.location.toLowerCase()) {
+      audit_('LOCATION VIOLATION', { manager: mgr.name, location: requested, verification: 'OK', status: STATUS.REJECTED,
+        detail: 'Attempted to file for ' + requested + ' but is assigned to ' + mgr.location });
+      alertAdmin_('Unauthorized location attempt', mgr.name + ' attempted to submit a report for "' + requested +
+        '" but is assigned to "' + mgr.location + '".');
+      return json({ status: 'error', message: 'You are not authorized to submit reports for that location.' });
+    }
+    data.manager.name = mgr.name;
+    if (mgr.location) data.manager.storeLocation = mgr.location;
+    data.verifiedManager = mgr.name;
+
+    // 2d) Per-manager submission cap
+    if (managerRateBlocked_(mgr.name)) {
+      audit_('RATE LIMIT', { manager: mgr.name, verification: 'OK', status: STATUS.REJECTED, detail: 'Exceeded ' + cfg('MAX_REPORTS_PER_HOUR') + '/hour' });
+      alertAdmin_('Submission rate limit hit', mgr.name + ' exceeded ' + cfg('MAX_REPORTS_PER_HOUR') + ' reports in one hour.');
+      return json({ status: 'error', message: 'You have reached the submission limit for this hour. Please try again later.' });
+    }
+
+    // 2e) SECURITY SCREENING of attachments (type / size / count / duplicates)
+    var screen = screenFiles_(data);
+    if (!screen.ok) {
+      audit_('SCREENING FAILED', { manager: mgr.name, location: data.manager.storeLocation, screening: 'BLOCKED',
+        fileCount: screen.files.length, status: STATUS.QUARANTINED, detail: screen.problems.join(' | ') });
+      alertAdmin_('Attachment screening blocked a submission',
+        mgr.name + ' — the following was rejected:\n\n' + screen.problems.join('\n'));
+      return json({ status: 'error', message: screen.problems.join(' ') });
+    }
+
+    // 2f) Duplicate-report detection (same manager + same week)
+    var dupReport = duplicateReport_(mgr.name, clean_(data.manager.weekStart, 30), clean_(data.manager.weekEnd, 30));
 
     var cache = CacheService.getScriptCache();
     var subId = sanitizeToken_(data.submissionId) || Utilities.getUuid();
@@ -72,23 +235,85 @@ function doPost(e) {
     var now = new Date();
     var ref = makeRef_(now, subId);
 
-    // Save files to a private Drive subfolder
+    // Files go to a PRIVATE staging folder — never the official MER folder yet.
     var saved = saveFiles_(data, ref);
 
-    // Persist to the sheet (email status pending)
-    var rowInfo = saveToSheet_(data, now, ref, saved.folderUrl);
+    // Persist to the sheet, awaiting review
+    saveToSheet_(data, now, ref, saved.folderUrl);
+    setReviewStatus_(ref, dupReport ? STATUS.PENDING + ' (possible duplicate)' : STATUS.PENDING);
 
-    // Send emails (returns delivery status; never throws)
+    audit_('SUBMISSION RECEIVED', {
+      ref: ref, manager: mgr.name, location: data.manager.storeLocation,
+      fileCount: screen.files.length, fileNames: screen.files.map(function (f) { return f.name; }),
+      totalBytes: screen.totalBytes, verification: 'OK',
+      duplicate: dupReport ? 'POSSIBLE DUPLICATE' : 'none', screening: 'PASSED', status: STATUS.PENDING
+    });
+    if (dupReport) {
+      alertAdmin_('Possible duplicate report', mgr.name + ' submitted a report for ' +
+        clean_(data.manager.weekStart, 30) + ' to ' + clean_(data.manager.weekEnd, 30) +
+        ', which appears to already exist. Reference ' + ref + '.');
+    }
+
+    // Notify reviewers (email only — nothing is filed officially yet)
     var result = sendReport_(data, ref, saved.folderUrl, saved.blobs);
     updateEmailStatus_(ref, result.delivered);
 
     cache.put(cacheKey, JSON.stringify({ ref: ref, delivered: result.delivered, folderUrl: saved.folderUrl }), 21600);
 
-    return json({ status: 'success', ref: ref, emailDelivered: result.delivered });
+    return json({ status: 'success', ref: ref, emailDelivered: result.delivered, review: STATUS.PENDING });
   } catch (err) {
     logError_(err);
     return json({ status: 'error', message: 'The server could not process the report. Please try again.' });
   }
+}
+
+// ===========================================================================
+// ACCESS CONTROL
+// ===========================================================================
+/** action=verify — checks a 6-digit code and returns a short-lived session token. */
+function handleVerify_(data) {
+  var code = String(data.code == null ? '' : data.code).replace(/[^0-9]/g, '');
+  var fp = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, code || 'empty')).slice(0, 24);
+
+  if (codeAttemptBlocked_(fp)) {
+    audit_('CODE LOCKOUT', { verification: 'LOCKED', detail: 'Too many incorrect codes' });
+    return json({ status: 'error', message: 'Too many incorrect attempts. Please try again later.' });
+  }
+  if (code.length !== 6) {
+    noteBadCode_(fp);
+    return json({ status: 'error', message: 'Please enter your 6-digit access code.' });
+  }
+
+  var mgr = lookupByCode_(code);
+  if (!mgr || mgr.inactive) {
+    var n = noteBadCode_(fp);
+    audit_('INVALID CODE', { verification: 'FAILED', detail: mgr && mgr.inactive ? 'Inactive manager: ' + mgr.name : 'Unknown code (attempt ' + n + ')' });
+    if (n >= parseInt(cfg('MAX_CODE_ATTEMPTS'), 10)) {
+      alertAdmin_('Repeated invalid access codes', 'The manager report form received ' + n +
+        ' incorrect access-code attempts. The code has been temporarily locked out.');
+    }
+    return json({ status: 'error', message: 'That access code is not recognized.' });
+  }
+
+  clearBadCodes_(fp);
+  audit_('CODE VERIFIED', { manager: mgr.name, location: mgr.location || 'ALL', verification: 'OK', status: 'IDENTITY VERIFICATION' });
+  return json({
+    status: 'success',
+    token: makeToken_(mgr),
+    manager: { name: mgr.name, location: mgr.location, isAdmin: !!mgr.isAdmin }
+  });
+}
+
+/** Validates a submission's token (preferred) or raw access code. */
+function authorize_(data) {
+  if (cfg('REQUIRE_ACCESS_CODE') !== 'true') {
+    return { ok: true, manager: { name: clean_(data.manager && data.manager.name, 80), location: '' } };
+  }
+  var t = data.token ? readToken_(data.token) : null;
+  if (t) return { ok: true, manager: { name: t.name, location: t.location } };
+  var mgr = data.code ? lookupByCode_(data.code) : null;
+  if (mgr && !mgr.inactive) return { ok: true, manager: mgr };
+  return { ok: false, message: 'Your session has expired. Please re-enter your access code and submit again.' };
 }
 
 // ===========================================================================
@@ -136,6 +361,125 @@ function isRateLimited_() {
     cache.put(key, String(n), 120);
     return n > parseInt(cfg('RATE_LIMIT_PER_MIN'), 10);
   } catch (e) { return false; }
+}
+
+// ===========================================================================
+// SECURITY SCREENING — type / size / count / duplicate checks
+// Files are never opened or executed; only metadata and bytes-length are read.
+// ===========================================================================
+function extOf_(name) {
+  var m = String(name || '').toLowerCase().match(/\.([a-z0-9]+)$/);
+  return m ? m[1] : '';
+}
+function approxBytes_(dataUrl) {
+  var s = String(dataUrl || '');
+  var i = s.indexOf(',');
+  return Math.floor((s.length - (i + 1)) * 0.75);
+}
+
+/**
+ * Screens every attachment. Returns
+ * { ok, problems[], files:[{bucket,name,type,bytes,hash,dataUrl}], hashes[] }
+ */
+function screenFiles_(data) {
+  var problems = [], files = [], seen = {};
+  var uploads = (data && data.uploads) || {};
+  var maxFiles = parseInt(cfg('MAX_FILES'), 10);
+  var maxFileBytes = parseFloat(cfg('MAX_FILE_MB')) * 1024 * 1024;
+  var maxTotalBytes = parseFloat(cfg('MAX_TOTAL_MB')) * 1024 * 1024;
+  var total = 0;
+
+  Object.keys(uploads).forEach(function (bucket) {
+    (uploads[bucket] || []).forEach(function (f) {
+      var name = clean_(f && f.name, 160) || 'file';
+      var type = String((f && f.type) || '').toLowerCase();
+      var ext = extOf_(name);
+
+      if (BLOCKED_EXT.indexOf(ext) !== -1) { problems.push('Blocked file type rejected: ' + name); return; }
+      if (ALLOWED_EXT.indexOf(ext) === -1) { problems.push('Unsupported file type rejected: ' + name + ' (allowed: PDF, JPG, JPEG, PNG, HEIC)'); return; }
+      if (type && ALLOWED_MIME.indexOf(type) === -1) { problems.push('File content type not allowed: ' + name); return; }
+      if (/\.(exe|bat|cmd|js|scr|msi)\./i.test(name)) { problems.push('Misleading filename rejected: ' + name); return; }
+
+      var bytes = approxBytes_(f.dataUrl);
+      if (bytes > maxFileBytes) { problems.push(name + ' exceeds the ' + cfg('MAX_FILE_MB') + ' MB per-file limit.'); return; }
+
+      var hash;
+      try {
+        hash = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, String(f.dataUrl)));
+      } catch (e) { hash = name + ':' + bytes; }
+      if (seen[hash]) { problems.push('Duplicate file skipped: ' + name); return; }
+      seen[hash] = true;
+
+      total += bytes;
+      files.push({ bucket: bucket, name: name, type: type || 'application/octet-stream', bytes: bytes, hash: hash, dataUrl: f.dataUrl });
+    });
+  });
+
+  if (files.length > maxFiles) problems.push('Too many attachments (' + files.length + '). Limit is ' + maxFiles + '.');
+  if (total > maxTotalBytes) problems.push('Attachments total too large. Limit is ' + cfg('MAX_TOTAL_MB') + ' MB.');
+
+  return { ok: problems.length === 0, problems: problems, files: files, totalBytes: total, hashes: Object.keys(seen) };
+}
+
+/** Per-manager submission cap (default 3/hour). */
+function managerRateBlocked_(managerName) {
+  try {
+    var cache = CacheService.getScriptCache();
+    var key = 'mrl_' + Utilities.base64Encode(String(managerName)).slice(0, 40) + '_' +
+      Utilities.formatDate(new Date(), 'UTC', 'yyyyMMddHH');
+    var n = parseInt(cache.get(key) || '0', 10) + 1;
+    cache.put(key, String(n), 3900);
+    return n > parseInt(cfg('MAX_REPORTS_PER_HOUR'), 10);
+  } catch (e) { return false; }
+}
+
+/** Same manager + same reporting week already filed? */
+function duplicateReport_(managerName, weekStart, weekEnd) {
+  try {
+    var sheet = getSpreadsheet_().getSheetByName('Responses');
+    if (!sheet || sheet.getLastRow() < 2) return false;
+    var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 7).getValues();
+    for (var i = rows.length - 1; i >= 0 && i > rows.length - 60; i--) {
+      if (String(rows[i][2]) === String(managerName) &&
+          String(rows[i][4]) === String(weekStart) &&
+          String(rows[i][5]) === String(weekEnd)) return true;
+    }
+    return false;
+  } catch (e) { return false; }
+}
+
+// ===========================================================================
+// AUDIT LOG + ADMIN ALERTS
+// ===========================================================================
+var AUDIT_HEADERS = ['Time', 'Event', 'Submission ID', 'Manager', 'Location', 'Files', 'File Names', 'Total Bytes',
+  'Verification', 'Duplicate', 'Screening', 'Status', 'Detail'];
+
+function audit_(event, info) {
+  try {
+    var ss = getSpreadsheet_();
+    var sh = ss.getSheetByName('Audit Log') || ss.insertSheet('Audit Log');
+    if (sh.getLastRow() === 0) {
+      sh.appendRow(AUDIT_HEADERS);
+      sh.getRange(1, 1, 1, AUDIT_HEADERS.length).setFontWeight('bold');
+      sh.setFrozenRows(1);
+    }
+    info = info || {};
+    sh.appendRow([
+      Utilities.formatDate(new Date(), tz_(), 'yyyy-MM-dd HH:mm:ss'), event,
+      cell_(info.ref), cell_(info.manager), cell_(info.location),
+      info.fileCount == null ? '' : info.fileCount, cell_((info.fileNames || []).join(', ')),
+      info.totalBytes == null ? '' : info.totalBytes,
+      cell_(info.verification), cell_(info.duplicate), cell_(info.screening),
+      cell_(info.status), cell_(info.detail)
+    ]);
+  } catch (e) { /* never block a submission on logging */ }
+}
+
+function alertAdmin_(subject, body) {
+  try {
+    var to = cfg('ADMIN_EMAIL') || cfg('OFFICE_EMAIL');
+    MailApp.sendEmail({ to: to, subject: '[Manager Report Security] ' + subject, body: body, name: 'Barber & Co. Report Security' });
+  } catch (e) { /* alerting must never throw */ }
 }
 
 // ===========================================================================
@@ -552,6 +896,150 @@ function weekHtml_(mon, wk, alsoNote) {
   }
   if (wk === 'fifth' && mon.fifth) s += kvHtml_('Notes', mon.fifth.notes);
   return s;
+}
+
+// ===========================================================================
+// REVIEW → APPROVAL → OFFICIAL DRIVE
+// Nothing reaches the official MER folder until an admin marks it APPROVED.
+// ===========================================================================
+function reviewColumn_(sheet) {
+  var head = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  for (var i = 0; i < head.length; i++) if (String(head[i]).trim() === 'Review Status') return i + 1;
+  var col = sheet.getLastColumn() + 1;
+  sheet.getRange(1, col).setValue('Review Status').setFontWeight('bold');
+  return col;
+}
+
+function setReviewStatus_(ref, status) {
+  try {
+    var sheet = getSpreadsheet_().getSheetByName('Responses');
+    if (!sheet) return;
+    var col = reviewColumn_(sheet);
+    var refs = sheet.getRange(1, 1, sheet.getLastRow(), 1).getValues();
+    for (var i = refs.length - 1; i >= 0; i--) {
+      if (refs[i][0] === ref) { sheet.getRange(i + 1, col).setValue(status); return; }
+    }
+  } catch (e) { logError_(e); }
+}
+
+function officialFolder_() {
+  var id = cfg('OFFICIAL_FOLDER_ID');
+  if (!id) return null;
+  try { return DriveApp.getFolderById(id); } catch (e) { logError_(e); return null; }
+}
+
+/**
+ * Files an approved report into the official MER folder, organised by
+ * OFFICIAL FOLDER ▸ <year> ▸ <month> ▸ <ref - manager>.
+ * Returns a human-readable result string.
+ */
+function fileApproved_(ref) {
+  var sheet = getSpreadsheet_().getSheetByName('Responses');
+  if (!sheet) return 'No Responses sheet.';
+  var lastCol = sheet.getLastColumn();
+  var refs = sheet.getRange(1, 1, sheet.getLastRow(), 1).getValues();
+  var rowIdx = -1;
+  for (var i = refs.length - 1; i >= 1; i--) if (refs[i][0] === ref) { rowIdx = i + 1; break; }
+  if (rowIdx < 0) return 'Reference ' + ref + ' not found.';
+
+  var row = sheet.getRange(rowIdx, 1, 1, lastCol).getValues()[0];
+  var manager = String(row[2] || 'Manager');
+  var weekStart = String(row[4] || '');
+  var stagingUrl = String(row[16] || '');
+
+  var dest = officialFolder_();
+  if (!dest) { setReviewStatus_(ref, STATUS.FAILED); return 'OFFICIAL_FOLDER_ID is not set — cannot file.'; }
+
+  try {
+    setReviewStatus_(ref, STATUS.UPLOAD_PENDING);
+    var d = weekStart ? new Date(weekStart) : new Date();
+    if (isNaN(d.getTime())) d = new Date();
+    var year = Utilities.formatDate(d, tz_(), 'yyyy');
+    var month = Utilities.formatDate(d, tz_(), 'MM - MMMM');
+    var target = childFolder_(childFolder_(dest, year), month);
+    var reportFolder = target.createFolder(ref + ' - ' + manager);
+
+    var moved = 0;
+    if (stagingUrl) {
+      var m = stagingUrl.match(/folders\/([A-Za-z0-9_\-]+)/);
+      if (m) {
+        var staging = DriveApp.getFolderById(m[1]);
+        var files = staging.getFiles();
+        while (files.hasNext()) { files.next().makeCopy(reportFolder); moved++; }
+      }
+    }
+    setReviewStatus_(ref, STATUS.COMPLETED);
+    audit_('FILED TO OFFICIAL DRIVE', { ref: ref, manager: manager, fileCount: moved, status: STATUS.COMPLETED, detail: reportFolder.getUrl() });
+    return 'Filed ' + ref + ' (' + moved + ' file(s)) → ' + year + '/' + month;
+  } catch (err) {
+    logError_(err);
+    setReviewStatus_(ref, STATUS.FAILED);
+    audit_('DRIVE FILING FAILED', { ref: ref, manager: manager, status: STATUS.FAILED, detail: String(err && err.message ? err.message : err) });
+    alertAdmin_('Drive filing failed', 'Reference ' + ref + ' could not be filed into the official folder. It remains in staging. Error: ' + err);
+    return 'Filing failed for ' + ref + ' — see Audit Log.';
+  }
+}
+
+function childFolder_(parent, name) {
+  var it = parent.getFoldersByName(name);
+  return it.hasNext() ? it.next() : parent.createFolder(name);
+}
+
+/** Spreadsheet menu: review helpers for admins. */
+function onOpen() {
+  SpreadsheetApp.getUi().createMenu('Manager Reports')
+    .addItem('Approve selected report', 'menuApproveSelected')
+    .addItem('Reject selected report', 'menuRejectSelected')
+    .addItem('Request changes on selected report', 'menuRequestChanges')
+    .addSeparator()
+    .addItem('File all APPROVED reports to Drive', 'menuFileAllApproved')
+    .addItem('Set up manager registry', 'ensureManagerSheet_')
+    .addToUi();
+}
+
+function selectedRef_() {
+  var sheet = SpreadsheetApp.getActiveSheet();
+  if (sheet.getName() !== 'Responses') return null;
+  var r = sheet.getActiveRange().getRow();
+  if (r < 2) return null;
+  return String(sheet.getRange(r, 1).getValue() || '');
+}
+
+function menuApproveSelected() {
+  var ui = SpreadsheetApp.getUi();
+  var ref = selectedRef_();
+  if (!ref) { ui.alert('Select a report row on the "Responses" tab first.'); return; }
+  var who = Session.getActiveUser().getEmail() || 'admin';
+  setReviewStatus_(ref, STATUS.APPROVED);
+  audit_('APPROVED', { ref: ref, status: STATUS.APPROVED, detail: 'Approved by ' + who });
+  ui.alert(fileApproved_(ref));
+}
+function menuRejectSelected() {
+  var ui = SpreadsheetApp.getUi();
+  var ref = selectedRef_();
+  if (!ref) { ui.alert('Select a report row on the "Responses" tab first.'); return; }
+  setReviewStatus_(ref, STATUS.REJECTED);
+  audit_('REJECTED', { ref: ref, status: STATUS.REJECTED, detail: 'Rejected by ' + (Session.getActiveUser().getEmail() || 'admin') });
+  ui.alert(ref + ' marked REJECTED. Nothing was filed to the official Drive.');
+}
+function menuRequestChanges() {
+  var ui = SpreadsheetApp.getUi();
+  var ref = selectedRef_();
+  if (!ref) { ui.alert('Select a report row on the "Responses" tab first.'); return; }
+  setReviewStatus_(ref, STATUS.CHANGES);
+  audit_('CHANGES REQUESTED', { ref: ref, status: STATUS.CHANGES });
+  ui.alert(ref + ' marked CHANGES REQUESTED.');
+}
+function menuFileAllApproved() {
+  var sheet = getSpreadsheet_().getSheetByName('Responses');
+  if (!sheet || sheet.getLastRow() < 2) return;
+  var col = reviewColumn_(sheet);
+  var vals = sheet.getRange(2, 1, sheet.getLastRow() - 1, col).getValues();
+  var out = [];
+  vals.forEach(function (r) {
+    if (String(r[col - 1]).trim().toUpperCase() === STATUS.APPROVED) out.push(fileApproved_(String(r[0])));
+  });
+  SpreadsheetApp.getUi().alert(out.length ? out.join('\n') : 'No reports are marked APPROVED.');
 }
 
 // ===========================================================================
