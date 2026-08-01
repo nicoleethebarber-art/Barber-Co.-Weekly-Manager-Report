@@ -154,8 +154,58 @@ function readToken_(token) {
 // ===========================================================================
 // ENTRY POINTS
 // ===========================================================================
-function doGet() {
+function doGet(e) {
+  var p = (e && e.parameter) || {};
+  // One-click approve / reject straight from the notification email.
+  if (p.a === 'approve' || p.a === 'reject') return handleDecision_(p);
   return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report' });
+}
+
+// ---- Signed approval links -------------------------------------------------
+function decisionSig_(ref, action) {
+  return Utilities.base64EncodeWebSafe(
+    Utilities.computeHmacSha256Signature(action + '|' + ref, tokenSecret_())).slice(0, 32);
+}
+function decisionUrl_(ref, action) {
+  var base;
+  try { base = ScriptApp.getService().getUrl(); } catch (err) { return ''; }
+  if (!base) return '';
+  return base + '?a=' + action + '&ref=' + encodeURIComponent(ref) + '&s=' + encodeURIComponent(decisionSig_(ref, action));
+}
+
+/** Handles an approve/reject click. Signature-protected, so links can't be guessed. */
+function handleDecision_(p) {
+  var ref = clean_(p.ref, 40);
+  var action = p.a === 'approve' ? 'approve' : 'reject';
+  if (!ref || p.s !== decisionSig_(ref, action)) {
+    return decisionPage_('Link not valid', 'This approval link is not valid or has been altered. Please approve from the spreadsheet instead.', false);
+  }
+  try {
+    if (action === 'reject') {
+      setReviewStatus_(ref, STATUS.REJECTED);
+      audit_('REJECTED', { ref: ref, status: STATUS.REJECTED, detail: 'Rejected via email link' });
+      return decisionPage_('Report rejected', ref + ' was marked REJECTED. Nothing was filed to the official Drive folder.', true);
+    }
+    setReviewStatus_(ref, STATUS.APPROVED);
+    audit_('APPROVED', { ref: ref, status: STATUS.APPROVED, detail: 'Approved via email link' });
+    var result = fileApproved_(ref);
+    return decisionPage_('Report approved', ref + ' was approved. ' + result, true);
+  } catch (err) {
+    logError_(err);
+    return decisionPage_('Something went wrong', 'The decision could not be completed. Please try from the spreadsheet.', false);
+  }
+}
+
+function decisionPage_(title, message, good) {
+  var color = good ? '#1f8a4c' : '#a3271a';
+  return HtmlService.createHtmlOutput(
+    '<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;max-width:520px;margin:60px auto;text-align:center;padding:0 20px">' +
+    '<div style="font-family:Georgia,serif;font-size:30px;font-weight:800;letter-spacing:1px">BARBER &amp; CO</div>' +
+    '<div style="color:#b8912a;font-style:italic;font-size:20px;margin-bottom:24px">Miami</div>' +
+    '<div style="font-size:46px">' + (good ? '&#9989;' : '&#9888;&#65039;') + '</div>' +
+    '<h2 style="color:' + color + ';margin:10px 0 8px">' + esc_(title) + '</h2>' +
+    '<p style="color:#555;font-size:15px;line-height:1.5">' + esc_(message) + '</p>' +
+    '</div>').setTitle(title);
 }
 
 function doPost(e) {
@@ -636,7 +686,7 @@ function sendReport_(data, ref, folderUrl, blobs) {
       replyTo: (m.contact && /@/.test(m.contact)) ? m.contact : office,
       subject: subject,
       body: body,
-      htmlBody: html + emailFooterHtml_(ref, folderUrl, linkOnly),
+      htmlBody: decisionButtonsHtml_(ref) + html + emailFooterHtml_(ref, folderUrl, linkOnly),
       attachments: attachments,
       name: 'Barber & Co. Manager Reports'
     });
@@ -678,6 +728,17 @@ function dataToBlobs_(data) {
     });
   });
   return out;
+}
+
+/** Approve / Reject buttons shown at the top of the office notification email. */
+function decisionButtonsHtml_(ref) {
+  var ok = decisionUrl_(ref, 'approve'), no = decisionUrl_(ref, 'reject');
+  if (!ok) return '';
+  return '<div style="font-family:Helvetica,Arial,sans-serif;background:#faf6e8;border:1px solid #e0b73f;border-radius:10px;padding:16px;margin:0 0 18px;text-align:center">' +
+    '<div style="font-size:13px;color:#555;margin-bottom:10px"><b>Status: PENDING REVIEW</b> — this report has <u>not</u> been filed to the official Drive folder yet.</div>' +
+    '<a href="' + ok + '" style="display:inline-block;background:#1f8a4c;color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:8px;margin:4px">✅ Approve &amp; File</a>' +
+    '<a href="' + no + '" style="display:inline-block;background:#a3271a;color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:8px;margin:4px">✕ Reject</a>' +
+    '</div>';
 }
 
 function emailFooterHtml_(ref, folderUrl, linkOnly) {
@@ -1117,6 +1178,8 @@ function onOpen() {
     .addSeparator()
     .addItem('Email order list for selected report', 'menuEmailOrderList')
     .addItem('File all APPROVED reports to Drive', 'menuFileAllApproved')
+    .addSeparator()
+    .addItem('Remove junk rows (code checks)', 'menuCleanupJunkRows')
     .addItem('Set up manager registry', 'setupManagerRegistry')
     .addToUi();
 }
@@ -1160,6 +1223,35 @@ function menuRequestChanges() {
   audit_('CHANGES REQUESTED', { ref: ref, status: STATUS.CHANGES });
   ui.alert(ref + ' marked CHANGES REQUESTED.');
 }
+/**
+ * Removes rows that were never real reports — access-code checks that the
+ * previous backend logged by mistake. Only deletes rows with no manager name
+ * AND stored data that is a verify request, so real reports are never touched.
+ */
+function menuCleanupJunkRows() {
+  var ui = SpreadsheetApp.getUi();
+  var sheet = getSpreadsheet_().getSheetByName('Responses');
+  if (!sheet || sheet.getLastRow() < 2) { ui.alert('Nothing to clean up.'); return; }
+
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, 18).getValues();
+  var doomed = [];
+  for (var i = 0; i < rows.length; i++) {
+    var manager = String(rows[i][2] || '').trim();
+    var json = String(rows[i][17] || '');
+    if (!manager && /"action"\s*:\s*"verify"/.test(json)) doomed.push(i + 2);
+  }
+  if (!doomed.length) { ui.alert('No junk rows found. Nothing was changed.'); return; }
+
+  var resp = ui.alert('Remove ' + doomed.length + ' junk row(s)?',
+    'These rows contain access-code checks, not reports (rows: ' + doomed.join(', ') + ').\n\nReal reports will not be touched.',
+    ui.ButtonSet.YES_NO);
+  if (resp !== ui.Button.YES) return;
+
+  for (var j = doomed.length - 1; j >= 0; j--) sheet.deleteRow(doomed[j]);
+  audit_('JUNK ROWS REMOVED', { fileCount: doomed.length, status: 'CLEANUP', detail: 'Rows: ' + doomed.join(', ') });
+  ui.alert('Removed ' + doomed.length + ' junk row(s).');
+}
+
 function menuFileAllApproved() {
   var sheet = getSpreadsheet_().getSheetByName('Responses');
   if (!sheet || sheet.getLastRow() < 2) return;
