@@ -375,10 +375,33 @@ function authorize_(data) {
 function json(obj) {
   return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
 }
+/**
+ * Builds a reference like BC-20260731-92F16 and guarantees it is unique in the
+ * sheet. Client-supplied ids can repeat (shared devices, restored drafts), so
+ * a collision gets a fresh random tail rather than reusing another report's
+ * reference.
+ */
 function makeRef_(now, subId) {
   var d = Utilities.formatDate(now, tz_(), 'yyyyMMdd');
-  var tail = String(subId).replace(/[^A-Za-z0-9]/g, '').slice(-5).toUpperCase() || Math.floor(Math.random() * 1e5);
-  return 'BC-' + d + '-' + tail;
+  var tail = String(subId).replace(/[^A-Za-z0-9]/g, '').slice(-5).toUpperCase();
+  if (tail.length < 5) tail = randomTail_();
+  var ref = 'BC-' + d + '-' + tail;
+  for (var i = 0; i < 8 && refExists_(ref); i++) ref = 'BC-' + d + '-' + randomTail_();
+  return ref;
+}
+function randomTail_() {
+  var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789', s = '';
+  for (var i = 0; i < 5; i++) s += chars.charAt(Math.floor(Math.random() * chars.length));
+  return s;
+}
+function refExists_(ref) {
+  try {
+    var sheet = getSpreadsheet_().getSheetByName('Responses');
+    if (!sheet || sheet.getLastRow() < 2) return false;
+    var vals = sheet.getRange(2, 1, sheet.getLastRow() - 1, 1).getValues();
+    for (var i = 0; i < vals.length; i++) if (String(vals[i][0]) === ref) return true;
+    return false;
+  } catch (e) { return false; }
 }
 function tz_() { return Session.getScriptTimeZone() || 'America/New_York'; }
 function sanitizeToken_(s) { return String(s == null ? '' : s).replace(/[^A-Za-z0-9\-]/g, '').slice(0, 60); }
