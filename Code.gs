@@ -1129,8 +1129,57 @@ function setReviewStatus_(ref, status) {
   } catch (e) { logError_(e); }
 }
 
-function officialFolder_() {
-  var id = cfg('OFFICIAL_FOLDER_ID');
+// ---- Per-location official folders (tab: "Location Folders") ---------------
+var LOC_HEADERS = ['Store Location', 'Official Drive Folder Link', 'Notes'];
+
+/** Creates the location→folder mapping tab, seeded with the known locations. */
+function ensureLocationSheet_() {
+  var ss = getSpreadsheet_();
+  var sh = ss.getSheetByName('Location Folders');
+  if (sh) return sh;
+  sh = ss.insertSheet('Location Folders');
+  sh.appendRow(LOC_HEADERS);
+  sh.getRange(1, 1, 1, LOC_HEADERS.length).setFontWeight('bold');
+  sh.setFrozenRows(1);
+  [['Miami / Edgewater', 'https://drive.google.com/drive/folders/1Vh-n2KXQhwVw7dqILlHQtSilTJrOPbIx', ''],
+   ['Pinecrest', 'https://drive.google.com/drive/folders/1GgcPziZUI8u6TTmCDfv1XBIolJ49WY6i', ''],
+   ['Studio', 'https://drive.google.com/drive/folders/1VsDG73FyrEF6t5si7n36MF4wQUfI36Kr', ''],
+   ['Default', '', 'Used when a location has no folder of its own']].forEach(function (r) { sh.appendRow(r); });
+  sh.setColumnWidth(2, 420);
+  return sh;
+}
+
+/** Pulls the folder id out of a Drive link (or accepts a bare id). */
+function folderIdFromUrl_(v) {
+  var s = clean_(v, 300);
+  if (!s) return '';
+  var m = s.match(/folders\/([A-Za-z0-9_\-]+)/);
+  if (m) return m[1];
+  m = s.match(/[?&]id=([A-Za-z0-9_\-]+)/);
+  if (m) return m[1];
+  return /^[A-Za-z0-9_\-]{15,}$/.test(s) ? s : '';
+}
+
+/** Folder for a given store location, falling back to Default, then the property. */
+function officialFolder_(location) {
+  var id = '';
+  try {
+    var sh = ensureLocationSheet_();
+    if (sh.getLastRow() > 1) {
+      var rows = sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues();
+      var wanted = clean_(location, 80).toLowerCase();
+      var fallback = '';
+      for (var i = 0; i < rows.length; i++) {
+        var name = clean_(rows[i][0], 80).toLowerCase();
+        var fid = folderIdFromUrl_(rows[i][1]);
+        if (!fid) continue;
+        if (name === 'default') fallback = fid;
+        else if (wanted && name === wanted) { id = fid; break; }
+      }
+      if (!id) id = fallback;
+    }
+  } catch (e) { logError_(e); }
+  if (!id) id = folderIdFromUrl_(cfg('OFFICIAL_FOLDER_ID'));
   if (!id) return null;
   try { return DriveApp.getFolderById(id); } catch (e) { logError_(e); return null; }
 }
@@ -1151,11 +1200,15 @@ function fileApproved_(ref) {
 
   var row = sheet.getRange(rowIdx, 1, 1, lastCol).getValues()[0];
   var manager = String(row[2] || 'Manager');
+  var location = String(row[3] || '');
   var weekStart = String(row[4] || '');
   var stagingUrl = String(row[16] || '');
 
-  var dest = officialFolder_();
-  if (!dest) { setReviewStatus_(ref, STATUS.FAILED); return 'OFFICIAL_FOLDER_ID is not set — cannot file.'; }
+  var dest = officialFolder_(location);
+  if (!dest) {
+    setReviewStatus_(ref, STATUS.FAILED);
+    return 'No official folder set for "' + location + '". Add its link on the "Location Folders" tab, then approve again.';
+  }
 
   try {
     setReviewStatus_(ref, STATUS.UPLOAD_PENDING);
@@ -1204,7 +1257,18 @@ function onOpen() {
     .addSeparator()
     .addItem('Remove junk rows (code checks)', 'menuCleanupJunkRows')
     .addItem('Set up manager registry', 'setupManagerRegistry')
+    .addItem('Set up location folders', 'setupLocationFolders')
     .addToUi();
+}
+
+/** Menu-safe wrapper — creates/reveals the location→folder mapping. */
+function setupLocationFolders() {
+  var sh = ensureLocationSheet_();
+  SpreadsheetApp.setActiveSheet(sh);
+  SpreadsheetApp.getUi().alert(
+    'Location Folders is ready.\n\nPaste each location\'s Google Drive folder link in column B. ' +
+    'Approved reports for that location are filed there, organised by year and month.\n\n' +
+    'The "Default" row is used for any location without its own folder.');
 }
 
 /** Menu-safe wrapper (Apps Script menus cannot call private functions). */
