@@ -1225,6 +1225,7 @@ function fileApproved_(ref) {
   var manager = String(row[2] || 'Manager');
   var location = String(row[3] || '');
   var weekStart = String(row[4] || '');
+  var weekEnd = String(row[5] || '');
   var stagingUrl = String(row[16] || '');
 
   var dest = officialFolder_(location);
@@ -1235,12 +1236,18 @@ function fileApproved_(ref) {
 
   try {
     setReviewStatus_(ref, STATUS.UPLOAD_PENDING);
-    var d = weekStart ? new Date(weekStart) : new Date();
-    if (isNaN(d.getTime())) d = new Date();
-    var year = Utilities.formatDate(d, tz_(), 'yyyy');
-    var month = Utilities.formatDate(d, tz_(), 'MM - MMMM');
-    var target = childFolder_(childFolder_(dest, year), month);
-    var reportFolder = target.createFolder(ref + ' - ' + manager);
+
+    // Match the shop's existing filing: week-range folders like
+    // "(December 29 - January 4)". If the location folder already keeps year
+    // folders, use the matching one — never create a year folder that isn't there.
+    var weekName = weekFolderName_(weekStart, weekEnd);
+    var parent = dest;
+    var year = weekYear_(weekStart);
+    if (year) {
+      var yr = existingChild_(dest, year);
+      if (yr) parent = yr;
+    }
+    var target = childFolder_(parent, weekName);
 
     var moved = 0;
     if (stagingUrl) {
@@ -1248,12 +1255,12 @@ function fileApproved_(ref) {
       if (m) {
         var staging = DriveApp.getFolderById(m[1]);
         var files = staging.getFiles();
-        while (files.hasNext()) { files.next().makeCopy(reportFolder); moved++; }
+        while (files.hasNext()) { files.next().makeCopy(target); moved++; }
       }
     }
     setReviewStatus_(ref, STATUS.COMPLETED);
-    audit_('FILED TO OFFICIAL DRIVE', { ref: ref, manager: manager, fileCount: moved, status: STATUS.COMPLETED, detail: reportFolder.getUrl() });
-    return 'Filed ' + ref + ' (' + moved + ' file(s)) → ' + year + '/' + month;
+    audit_('FILED TO OFFICIAL DRIVE', { ref: ref, manager: manager, fileCount: moved, status: STATUS.COMPLETED, detail: target.getUrl() });
+    return 'Filed ' + ref + ' (' + moved + ' file(s)) → ' + weekName;
   } catch (err) {
     logError_(err);
     setReviewStatus_(ref, STATUS.FAILED);
@@ -1261,6 +1268,44 @@ function fileApproved_(ref) {
     alertAdmin_('Drive filing failed', 'Reference ' + ref + ' could not be filed into the official folder. It remains in staging. Error: ' + err);
     return 'Filing failed for ' + ref + ' — see Audit Log.';
   }
+}
+
+/** Parses a yyyy-MM-dd string without timezone drift. Returns null if unusable. */
+function parseYmd_(s) {
+  var m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) {
+    var d = new Date(s);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  return new Date(parseInt(m[1], 10), parseInt(m[2], 10) - 1, parseInt(m[3], 10));
+}
+
+/**
+ * Week folder named the way the shop already files, e.g.
+ * "(December 29 - January 4)". Falls back to the start date alone when the
+ * end date is missing.
+ */
+function weekFolderName_(weekStart, weekEnd) {
+  var a = parseYmd_(weekStart), b = parseYmd_(weekEnd);
+  if (!a && !b) return '(Undated)';
+  if (!a) a = b;
+  var fmt = function (d) { return Utilities.formatDate(d, tz_(), 'MMMM d'); };
+  if (!b) return '(' + fmt(a) + ')';
+  return '(' + fmt(a) + ' - ' + fmt(b) + ')';
+}
+
+/** Year of the week, used only to match an existing year folder. */
+function weekYear_(weekStart) {
+  var d = parseYmd_(weekStart);
+  return d ? Utilities.formatDate(d, tz_(), 'yyyy') : '';
+}
+
+/** Returns an existing child folder, or null. Never creates one. */
+function existingChild_(parent, name) {
+  try {
+    var it = parent.getFoldersByName(name);
+    return it.hasNext() ? it.next() : null;
+  } catch (e) { return null; }
 }
 
 function childFolder_(parent, name) {
