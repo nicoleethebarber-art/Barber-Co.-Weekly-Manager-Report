@@ -28,6 +28,10 @@ var DEFAULTS = {
   RATE_LIMIT_PER_MIN: '15',   // global submissions per minute (bot guard)
   SEND_CONFIRMATION: 'true',  // email the manager a confirmation copy
   MAX_EMAIL_ATTACH_MB: '20',  // if attachments exceed this, send Drive links instead
+  // Web app /exec URL, used to build approve/reject links. Apps Script cannot
+  // always report its own URL, so keep it here; update it if you ever create a
+  // NEW deployment (editing an existing deployment keeps the same URL).
+  WEB_APP_URL: 'https://script.google.com/macros/s/AKfycbxDmnziRyvk0r0u7l_9spf28x1DunNQmli5_9bpm1uQ0qQDZ1s4UHBJexMidevUrFc8/exec',
 
   // ---- Access control & upload protection ----
   REQUIRE_ACCESS_CODE: 'true',   // managers must enter their 6-digit code
@@ -167,9 +171,19 @@ function decisionSig_(ref, action) {
   return Utilities.base64EncodeWebSafe(
     Utilities.computeHmacSha256Signature(action + '|' + ref, tokenSecret_())).slice(0, 32);
 }
+/** Web app base URL: the configured one first, then whatever Apps Script reports. */
+function webAppUrl_() {
+  var u = clean_(cfg('WEB_APP_URL'), 300);
+  if (u && /\/exec\s*$/.test(u)) return u;
+  try {
+    var s = ScriptApp.getService().getUrl();
+    if (s) return s;
+  } catch (err) { /* not always available */ }
+  return u || '';
+}
+
 function decisionUrl_(ref, action) {
-  var base;
-  try { base = ScriptApp.getService().getUrl(); } catch (err) { return ''; }
+  var base = webAppUrl_();
   if (!base) return '';
   return base + '?a=' + action + '&ref=' + encodeURIComponent(ref) + '&s=' + encodeURIComponent(decisionSig_(ref, action));
 }
@@ -779,7 +793,12 @@ function dataToBlobs_(data) {
 /** Approve / Reject buttons shown at the top of the office notification email. */
 function decisionButtonsHtml_(ref) {
   var ok = decisionUrl_(ref, 'approve'), no = decisionUrl_(ref, 'reject');
-  if (!ok) return '';
+  if (!ok) {
+    // Never fail silently — say how to approve instead.
+    return '<div style="font-family:Helvetica,Arial,sans-serif;background:#fff6e0;border:1px solid #f0d48a;border-radius:10px;padding:14px;margin:0 0 18px;font-size:13px;color:#8a5a00">' +
+      '<b>Status: PENDING REVIEW.</b> One-click approval is unavailable because the web app URL is not set. ' +
+      'Approve from the spreadsheet: select the report row, then <b>Manager Reports → Approve selected report</b>.</div>';
+  }
   return '<div style="font-family:Helvetica,Arial,sans-serif;background:#faf6e8;border:1px solid #e0b73f;border-radius:10px;padding:16px;margin:0 0 18px;text-align:center">' +
     '<div style="font-size:13px;color:#555;margin-bottom:10px"><b>Status: PENDING REVIEW</b> — this report has <u>not</u> been filed to the official Drive folder yet.</div>' +
     '<a href="' + ok + '" style="display:inline-block;background:#1f8a4c;color:#fff;text-decoration:none;font-weight:bold;padding:12px 22px;border-radius:8px;margin:4px">✅ Approve &amp; File</a>' +
