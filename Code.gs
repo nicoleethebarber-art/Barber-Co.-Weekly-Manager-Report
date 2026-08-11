@@ -1105,6 +1105,52 @@ function sendOrderEmail_(data, ref, to) {
   }
 }
 
+/**
+ * Menu: email approve/reject buttons for the selected report. Lets any report
+ * already in the sheet — including ones submitted before this feature existed —
+ * be approved from your inbox.
+ */
+function menuEmailApprovalLink() {
+  var ui = SpreadsheetApp.getUi();
+  var sheet = SpreadsheetApp.getActiveSheet();
+  if (sheet.getName() !== 'Responses') { ui.alert('Select a report row on the "Responses" tab first.'); return; }
+  var row = sheet.getActiveRange().getRow();
+  if (row < 2) { ui.alert('Select a report row (not the header).'); return; }
+
+  var ref = String(sheet.getRange(row, 1).getValue() || '');
+  if (!ref) { ui.alert('That row has no reference number.'); return; }
+  var manager = String(sheet.getRange(row, 3).getValue() || '');
+  var location = String(sheet.getRange(row, 4).getValue() || '');
+  var weekStart = String(sheet.getRange(row, 5).getValue() || '');
+  var weekEnd = String(sheet.getRange(row, 6).getValue() || '');
+
+  var buttons = decisionButtonsHtml_(ref);
+  if (!buttons) { ui.alert('Approval links are unavailable — the web app URL could not be read.'); return; }
+
+  var to = cfg('ADMIN_EMAIL') || cfg('OFFICE_EMAIL');
+  try {
+    MailApp.sendEmail({
+      to: to,
+      subject: 'Approve report – ' + (location || 'Location') + ' – ' + (manager || 'Manager') + ' – ' + ref,
+      body: 'Approve or reject ' + ref + ' (' + manager + ', ' + location + ', ' +
+            weekStart + (weekEnd ? ' to ' + weekEnd : '') + ') using the buttons in this email.',
+      htmlBody: '<div style="font-family:Helvetica,Arial,sans-serif">' +
+        '<h2 style="font-family:Georgia,serif;margin:0 0 2px">Approve Report</h2>' +
+        '<div style="color:#b8912a;font-style:italic;margin-bottom:12px">Barber &amp; Co. Miami</div>' +
+        '<p style="font-size:13px"><b>Reference:</b> ' + esc_(ref) + '<br>' +
+        '<b>Manager:</b> ' + esc_(manager) + '<br><b>Location:</b> ' + esc_(location) + '<br>' +
+        '<b>Week:</b> ' + esc_(weekStart) + (weekEnd ? ' to ' + esc_(weekEnd) : '') + '</p>' +
+        buttons + '</div>',
+      name: 'Barber & Co. Manager Reports'
+    });
+    audit_('APPROVAL LINK EMAILED', { ref: ref, manager: manager, location: location, status: 'SENT' });
+    ui.alert('Approval email for ' + ref + ' sent to ' + to + '.');
+  } catch (err) {
+    logError_(err);
+    ui.alert('Could not send the approval email — see the Errors tab.');
+  }
+}
+
 /** Menu: email the order list for the selected report (works for past reports). */
 function menuEmailOrderList() {
   var ui = SpreadsheetApp.getUi();
@@ -1320,6 +1366,7 @@ function onOpen() {
     .addItem('Reject selected report', 'menuRejectSelected')
     .addItem('Request changes on selected report', 'menuRequestChanges')
     .addSeparator()
+    .addItem('Email me approve/reject buttons for selected report', 'menuEmailApprovalLink')
     .addItem('Email order list for selected report', 'menuEmailOrderList')
     .addItem('File all APPROVED reports to Drive', 'menuFileAllApproved')
     .addSeparator()
