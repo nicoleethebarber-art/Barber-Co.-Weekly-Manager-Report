@@ -31,7 +31,8 @@ var DEFAULTS = {
 
   // ---- Access control & upload protection ----
   REQUIRE_ACCESS_CODE: 'true',   // managers must enter their 6-digit code
-  MAX_REPORTS_PER_HOUR: '3',     // per manager
+  MAX_REPORTS_PER_HOUR: '12',       // per manager (catching up on a backlog is normal)
+  MAX_REPORTS_PER_HOUR_ADMIN: '40', // admins file for every location, so a much higher cap
   MAX_FILES: '20',               // attachments per report
   MAX_FILE_MB: '10',             // per file
   MAX_TOTAL_MB: '50',            // all attachments combined
@@ -243,11 +244,13 @@ function doPost(e) {
     if (mgr.location) data.manager.storeLocation = mgr.location;
     data.verifiedManager = mgr.name;
 
-    // 2d) Per-manager submission cap
-    if (managerRateBlocked_(mgr.name)) {
-      audit_('RATE LIMIT', { manager: mgr.name, verification: 'OK', status: STATUS.REJECTED, detail: 'Exceeded ' + cfg('MAX_REPORTS_PER_HOUR') + '/hour' });
-      alertAdmin_('Submission rate limit hit', mgr.name + ' exceeded ' + cfg('MAX_REPORTS_PER_HOUR') + ' reports in one hour.');
-      return json({ status: 'error', message: 'You have reached the submission limit for this hour. Please try again later.' });
+    // 2d) Per-manager submission cap (admins get a much higher allowance)
+    var isAdmin = (mgr.isAdmin === true) || isAdminName_(mgr.name);
+    if (managerRateBlocked_(mgr.name, isAdmin)) {
+      var cap = cfg(isAdmin ? 'MAX_REPORTS_PER_HOUR_ADMIN' : 'MAX_REPORTS_PER_HOUR');
+      audit_('RATE LIMIT', { manager: mgr.name, verification: 'OK', status: STATUS.REJECTED, detail: 'Exceeded ' + cap + '/hour' });
+      alertAdmin_('Submission rate limit hit', mgr.name + ' exceeded ' + cap + ' reports in one hour.');
+      return json({ status: 'error', message: 'You have submitted ' + cap + ' reports in the past hour, which is the safety limit. Please wait a little and continue — nothing you entered was lost.' });
     }
 
     // 2e) SECURITY SCREENING of attachments (type / size / count / duplicates)
@@ -497,15 +500,35 @@ function screenFiles_(data) {
   return { ok: problems.length === 0, problems: problems, files: files, totalBytes: total, hashes: Object.keys(seen) };
 }
 
-/** Per-manager submission cap (default 3/hour). */
-function managerRateBlocked_(managerName) {
+/** Is this manager an Admin? Looked up by name in the registry. */
+function isAdminName_(name) {
+  try {
+    var sh = ensureManagerSheet_();
+    if (sh.getLastRow() < 2) return false;
+    var rows = sh.getRange(2, 1, sh.getLastRow() - 1, MGR_HEADERS.length).getValues();
+    var want = clean_(name, 80).toLowerCase();
+    for (var i = 0; i < rows.length; i++) {
+      if (clean_(rows[i][0], 80).toLowerCase() === want) {
+        return String(rows[i][3] || '').trim().toLowerCase() === 'admin';
+      }
+    }
+  } catch (e) { /* fall through */ }
+  return false;
+}
+
+/**
+ * Per-manager submission cap. Catching up on late reports is normal, so the
+ * limit is generous; admins file for every location and get a higher one.
+ */
+function managerRateBlocked_(managerName, isAdmin) {
   try {
     var cache = CacheService.getScriptCache();
     var key = 'mrl_' + Utilities.base64Encode(String(managerName)).slice(0, 40) + '_' +
       Utilities.formatDate(new Date(), 'UTC', 'yyyyMMddHH');
     var n = parseInt(cache.get(key) || '0', 10) + 1;
     cache.put(key, String(n), 3900);
-    return n > parseInt(cfg('MAX_REPORTS_PER_HOUR'), 10);
+    var cap = parseInt(cfg(isAdmin ? 'MAX_REPORTS_PER_HOUR_ADMIN' : 'MAX_REPORTS_PER_HOUR'), 10);
+    return n > cap;
   } catch (e) { return false; }
 }
 
