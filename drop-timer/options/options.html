@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Drop Timer — settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>Drop Timer</h1>
+      <p class="tagline">
+        Preparation and timing aid. It never clicks, submits, or sends a request on your behalf.
+      </p>
+    </header>
+
+    <main>
+      <!-- ------------------------------------------------------- drops -->
+      <section>
+        <div class="section-head">
+          <h2>Drops</h2>
+          <button id="add-drop" class="primary" type="button">+ Add drop</button>
+        </div>
+
+        <p id="empty-state" class="empty" hidden>
+          No drops configured yet. Add one, fill in the product URL and drop time, then grant
+          access to that site so the countdown can appear on the page.
+        </p>
+
+        <div id="drop-list"></div>
+      </section>
+
+      <!-- ------------------------------------------------------- cues -->
+      <section>
+        <h2>Audible cues</h2>
+        <div class="card">
+          <div class="row">
+            <label class="inline">
+              <input type="checkbox" id="muted" />
+              <span>Mute all cues</span>
+            </label>
+          </div>
+          <div class="row">
+            <label for="volume">Volume</label>
+            <input type="range" id="volume" min="0" max="100" step="1" />
+            <span id="volume-label" class="mono">85%</span>
+            <button id="test-tone" type="button">Test T-0 tone</button>
+          </div>
+          <div class="row">
+            <label class="inline">
+              <input type="checkbox" id="keep-awake" />
+              <span>Hold a screen wake lock while a drop page is open</span>
+            </label>
+          </div>
+          <p class="hint">
+            Cues fire at T-60s (one tone), T-10s (three tones), and T-0 (a distinct alarm), plus a
+            warning tone at T-5min if the checklist isn't green. Volume here is capped by your
+            system volume — set that too before a 3am drop, and use the test button to check it at
+            the volume you'll actually be asleep at.
+          </p>
+        </div>
+      </section>
+
+      <!-- --------------------------------------------------- transfer -->
+      <section>
+        <h2>Import / export</h2>
+        <div class="card">
+          <div class="row">
+            <button id="export" type="button">Export JSON file</button>
+            <button id="copy-json" type="button">Copy JSON to clipboard</button>
+            <button id="import-file" type="button">Import from file…</button>
+            <input type="file" id="file-input" accept="application/json,.json" hidden />
+          </div>
+          <label for="import-text">Or paste a config and import it</label>
+          <textarea id="import-text" rows="6" spellcheck="false" placeholder='{ "drops": [ … ] }'></textarea>
+          <div class="row">
+            <button id="import-paste" type="button">Import pasted JSON</button>
+            <span class="hint">Importing replaces your current drop list.</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ------------------------------------------------------- help -->
+      <section>
+        <h2>Finding the right CSS selectors</h2>
+        <div class="card help">
+          <ol>
+            <li>Open the product page and press <kbd>F12</kbd> (or <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>Shift</kbd> + <kbd>C</kbd>).</li>
+            <li>Click the inspect-element arrow, then click the element you care about.</li>
+            <li>In the Elements panel, right-click the highlighted node → <b>Copy</b> → <b>Copy selector</b>.</li>
+            <li>Paste it into the matching field here.</li>
+            <li>Test it: back on the page, type <code>document.querySelectorAll('your-selector')</code> in the
+              Console. You want exactly one match for the buy button.</li>
+          </ol>
+          <p class="hint">
+            Prefer stable attributes over generated class names. <code>button[name="add"]</code> or
+            <code>[data-testid="add-to-cart"]</code> will survive a site redeploy;
+            <code>.css-1x7yhk9</code> will not. Full details are in the README.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <!-- Classic scripts, loaded in dependency order. No build step. -->
+    <script src="../lib/tz.js"></script>
+    <script src="../lib/store.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>
