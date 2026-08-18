@@ -1303,15 +1303,11 @@ function fileApproved_(ref) {
     setReviewStatus_(ref, STATUS.UPLOAD_PENDING);
 
     // Match the shop's existing filing: week-range folders like
-    // "(December 29 - January 4)". If the location folder already keeps year
-    // folders, use the matching one — never create a year folder that isn't there.
+    // "(December 29 - January 4)" inside month folders like "8. August 2026"
+    // (or year folders, if a location uses those). Only EXISTING month/year
+    // folders are matched — one is never created that isn't already there.
     var weekName = weekFolderName_(weekStart, weekEnd);
-    var parent = dest;
-    var year = weekYear_(weekStart);
-    if (year) {
-      var yr = existingChild_(dest, year);
-      if (yr) parent = yr;
-    }
+    var parent = filingParent_(dest, weekStart, weekEnd);
     var target = childFolder_(parent, weekName);
 
     var moved = 0;
@@ -1363,6 +1359,44 @@ function weekFolderName_(weekStart, weekEnd) {
 function weekYear_(weekStart) {
   var d = parseYmd_(weekStart);
   return d ? Utilities.formatDate(d, tz_(), 'yyyy') : '';
+}
+
+/**
+ * Picks where the week folder belongs inside the location folder, matching
+ * the shop's real filing. Looks for an existing month folder whose name
+ * contains e.g. "August 2026" (so "8. August 2026" matches), trying the week's
+ * end month first (a Dec 29 - Jan 4 week files under January), then the start
+ * month, then a plain year folder. Never creates a month/year folder — if
+ * none exists, files at the top of the location folder.
+ */
+function filingParent_(dest, weekStart, weekEnd) {
+  var dates = [parseYmd_(weekEnd), parseYmd_(weekStart)];
+  for (var i = 0; i < dates.length; i++) {
+    if (!dates[i]) continue;
+    var label = Utilities.formatDate(dates[i], tz_(), 'MMMM yyyy');
+    var hit = childContaining_(dest, label);
+    if (hit) return hit;
+  }
+  var year = weekYear_(weekStart) || weekYear_(weekEnd);
+  if (year) {
+    var yr = existingChild_(dest, year);
+    if (yr) return yr;
+  }
+  return dest;
+}
+
+/** Existing child folder whose name contains the text (case-insensitive), or null. */
+function childContaining_(parent, text) {
+  try {
+    var want = String(text || '').toLowerCase();
+    if (!want) return null;
+    var it = parent.getFolders();
+    while (it.hasNext()) {
+      var f = it.next();
+      if (String(f.getName()).toLowerCase().indexOf(want) !== -1) return f;
+    }
+  } catch (e) {}
+  return null;
 }
 
 /** Returns an existing child folder, or null. Never creates one. */
