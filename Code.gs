@@ -163,7 +163,7 @@ function doGet(e) {
   var p = (e && e.parameter) || {};
   // One-click approve / reject straight from the notification email.
   if (p.a === 'approve' || p.a === 'reject') return handleDecision_(p);
-  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report' });
+  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v3 — month folders' });
 }
 
 // ---- Signed approval links -------------------------------------------------
