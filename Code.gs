@@ -1303,9 +1303,9 @@ function fileApproved_(ref) {
     setReviewStatus_(ref, STATUS.UPLOAD_PENDING);
 
     // Match the shop's existing filing: week-range folders like
-    // "(December 29 - January 4)" inside month folders like "8. August 2026"
-    // (or year folders, if a location uses those). Only EXISTING month/year
-    // folders are matched — one is never created that isn't already there.
+    // "(December 29 - January 4)" inside month folders like "8. August 2026".
+    // When a new month or year starts, the month folder is created
+    // automatically in the same numbered style — filing is fully hands-free.
     var weekName = weekFolderName_(weekStart, weekEnd);
     var parent = filingParent_(dest, weekStart, weekEnd);
     var target = childFolder_(parent, weekName);
@@ -1363,26 +1363,28 @@ function weekYear_(weekStart) {
 
 /**
  * Picks where the week folder belongs inside the location folder, matching
- * the shop's real filing. Looks for an existing month folder whose name
- * contains e.g. "August 2026" (so "8. August 2026" matches), trying the week's
- * end month first (a Dec 29 - Jan 4 week files under January), then the start
- * month, then a plain year folder. Never creates a month/year folder — if
- * none exists, files at the top of the location folder.
+ * the shop's real filing. A week files under the month it ENDS in, so a
+ * Dec 29 - Jan 4 week files under January. Looks for an existing month folder
+ * whose name contains e.g. "August 2026" (so "8. August 2026" matches); if
+ * the location keeps a year folder ("2027"), the month folder is looked up —
+ * or created — inside it. When the month folder doesn't exist yet (a new
+ * month, or a new year like January 2027), it is created automatically in
+ * the shop's numbered style, e.g. "1. January 2027" — filing is hands-free.
  */
 function filingParent_(dest, weekStart, weekEnd) {
-  var dates = [parseYmd_(weekEnd), parseYmd_(weekStart)];
-  for (var i = 0; i < dates.length; i++) {
-    if (!dates[i]) continue;
-    var label = Utilities.formatDate(dates[i], tz_(), 'MMMM yyyy');
-    var hit = childContaining_(dest, label);
-    if (hit) return hit;
+  var d = parseYmd_(weekEnd) || parseYmd_(weekStart);
+  if (!d) return dest;
+  var label = Utilities.formatDate(d, tz_(), 'MMMM yyyy');
+  var hit = childContaining_(dest, label);
+  if (hit) return hit;
+  var parent = dest;
+  var yr = existingChild_(dest, Utilities.formatDate(d, tz_(), 'yyyy'));
+  if (yr) {
+    parent = yr;
+    var inYr = childContaining_(yr, label);
+    if (inYr) return inYr;
   }
-  var year = weekYear_(weekStart) || weekYear_(weekEnd);
-  if (year) {
-    var yr = existingChild_(dest, year);
-    if (yr) return yr;
-  }
-  return dest;
+  return childFolder_(parent, (d.getMonth() + 1) + '. ' + label);
 }
 
 /** Existing child folder whose name contains the text (case-insensitive), or null. */
