@@ -163,7 +163,7 @@ function doGet(e) {
   var p = (e && e.parameter) || {};
   // One-click approve / reject straight from the notification email.
   if (p.a === 'approve' || p.a === 'reject') return handleDecision_(p);
-  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v3 — month folders' });
+  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v4 — files MER PDF + receipts' });
 }
 
 // ---- Signed approval links -------------------------------------------------
@@ -1311,12 +1311,22 @@ function fileApproved_(ref) {
     var target = childFolder_(parent, weekName);
 
     var moved = 0;
+    // Always file the formatted report itself, rebuilt from the stored data,
+    // so the week folder gets "MER - <ref>.pdf" even when nothing was uploaded.
+    var pdf = reportPdf_(row, ref);
+    if (pdf) { target.createFile(pdf); moved++; }
     if (stagingUrl) {
       var m = stagingUrl.match(/folders\/([A-Za-z0-9_\-]+)/);
       if (m) {
         var staging = DriveApp.getFolderById(m[1]);
         var files = staging.getFiles();
-        while (files.hasNext()) { files.next().makeCopy(target); moved++; }
+        while (files.hasNext()) {
+          var f = files.next();
+          var nm = f.getName();
+          var pretty = nm.indexOf('__') > -1 ? nm.slice(nm.indexOf('__') + 2) : nm;
+          f.makeCopy(pretty, target);
+          moved++;
+        }
       }
     }
     setReviewStatus_(ref, STATUS.COMPLETED);
@@ -1329,6 +1339,21 @@ function fileApproved_(ref) {
     alertAdmin_('Drive filing failed', 'Reference ' + ref + ' could not be filed into the official folder. It remains in staging. Error: ' + err);
     return 'Filing failed for ' + ref + ' — see Audit Log.';
   }
+}
+
+/**
+ * Rebuilds the formatted report as a PDF from the stored row data, so filing
+ * always includes the MER itself. Returns null when the row can't be rebuilt.
+ */
+function reportPdf_(row, ref) {
+  try {
+    var data = JSON.parse(String(row[17] || '{}'));
+    if (!data || !data.manager) return null;
+    var stamp = String(row[1] || '');
+    var html = buildReportHtml_(data, ref, stamp, String(row[16] || ''));
+    return Utilities.newBlob(html, 'text/html', 'report.html').getAs('application/pdf')
+      .setName('MER - ' + ref + '.pdf');
+  } catch (err) { logError_(err); return null; }
 }
 
 /** Parses a yyyy-MM-dd string without timezone drift. Returns null if unusable. */
