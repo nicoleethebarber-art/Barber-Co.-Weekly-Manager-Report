@@ -163,7 +163,7 @@ function doGet(e) {
   var p = (e && e.parameter) || {};
   // One-click approve / reject straight from the notification email.
   if (p.a === 'approve' || p.a === 'reject') return handleDecision_(p);
-  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v4 — files MER PDF + receipts' });
+  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v5 — one finance folder, auto year/month/week' });
 }
 
 // ---- Signed approval links -------------------------------------------------
@@ -1302,12 +1302,12 @@ function fileApproved_(ref) {
   try {
     setReviewStatus_(ref, STATUS.UPLOAD_PENDING);
 
-    // Match the shop's existing filing: week-range folders like
-    // "(December 29 - January 4)" inside month folders like "8. August 2026".
-    // When a new month or year starts, the month folder is created
-    // automatically in the same numbered style — filing is fully hands-free.
+    // Match the shop's real filing tree: [Finance] → location → year → month
+    // → week-range folder like "(December 29 - January 4)". Each level below
+    // the location is found if it exists and created if it doesn't (a new
+    // week, month, or year) — filing is fully hands-free.
     var weekName = weekFolderName_(weekStart, weekEnd);
-    var parent = filingParent_(dest, weekStart, weekEnd);
+    var parent = filingParent_(dest, location, weekStart, weekEnd);
     var target = childFolder_(parent, weekName);
 
     var moved = 0;
@@ -1387,29 +1387,68 @@ function weekYear_(weekStart) {
 }
 
 /**
- * Picks where the week folder belongs inside the location folder, matching
- * the shop's real filing. A week files under the month it ENDS in, so a
- * Dec 29 - Jan 4 week files under January. Looks for an existing month folder
- * whose name contains e.g. "August 2026" (so "8. August 2026" matches); if
- * the location keeps a year folder ("2027"), the month folder is looked up —
- * or created — inside it. When the month folder doesn't exist yet (a new
- * month, or a new year like January 2027), it is created automatically in
- * the shop's numbered style, e.g. "1. January 2027" — filing is hands-free.
+ * Picks where the week folder belongs, walking the shop's real filing tree
+ * from the configured folder: an optional location level (used when the
+ * configured folder is a shared parent like "Finance" holding one folder per
+ * location), then year, then month. A week belongs to the month it ENDS in,
+ * so a Dec 29 - Jan 4 week files under January. Existing folders are matched
+ * loosely ("8. August 2026" matches "August 2026"; "Edgewater" matches
+ * "Miami / Edgewater"). Year and month folders are created when missing —
+ * years as plain "2027" (only where the tree already files by year), months
+ * in the shop's numbered style "1. January 2027". Location folders are never
+ * created — an unknown location files at the configured folder itself.
  */
-function filingParent_(dest, weekStart, weekEnd) {
+function filingParent_(dest, location, weekStart, weekEnd) {
   var d = parseYmd_(weekEnd) || parseYmd_(weekStart);
   if (!d) return dest;
+  var node = locationChild_(dest, location) || dest;
   var label = Utilities.formatDate(d, tz_(), 'MMMM yyyy');
-  var hit = childContaining_(dest, label);
+  var hit = childContaining_(node, label);
   if (hit) return hit;
-  var parent = dest;
-  var yr = existingChild_(dest, Utilities.formatDate(d, tz_(), 'yyyy'));
+  var yearName = Utilities.formatDate(d, tz_(), 'yyyy');
+  var yr = existingChild_(node, yearName);
+  if (!yr && usesYearFolders_(node)) yr = childFolder_(node, yearName);
   if (yr) {
-    parent = yr;
+    node = yr;
     var inYr = childContaining_(yr, label);
     if (inYr) return inYr;
   }
-  return childFolder_(parent, (d.getMonth() + 1) + '. ' + label);
+  return childFolder_(node, (d.getMonth() + 1) + '. ' + label);
+}
+
+/**
+ * Finds the existing subfolder for a report's location inside a shared
+ * parent folder, matching loosely in both directions ("Edgewater" matches
+ * "Miami / Edgewater"). Returns null when none matches — never creates one.
+ */
+function locationChild_(parent, location) {
+  var loc = String(location || '').toLowerCase();
+  if (!loc) return null;
+  var tokens = loc.split(/[^a-z]+/).filter(function (t) { return t.length > 2; });
+  try {
+    var it = parent.getFolders();
+    while (it.hasNext()) {
+      var f = it.next();
+      var name = String(f.getName()).toLowerCase().trim();
+      if (!name) continue;
+      if (loc.indexOf(name) !== -1) return f;
+      for (var i = 0; i < tokens.length; i++) {
+        if (name.indexOf(tokens[i]) !== -1) return f;
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+/** True when the folder already files by year — it has a "2026"-style child. */
+function usesYearFolders_(parent) {
+  try {
+    var it = parent.getFolders();
+    while (it.hasNext()) {
+      if (/^\d{4}$/.test(String(it.next().getName()).trim())) return true;
+    }
+  } catch (e) {}
+  return false;
 }
 
 /** Existing child folder whose name contains the text (case-insensitive), or null. */
