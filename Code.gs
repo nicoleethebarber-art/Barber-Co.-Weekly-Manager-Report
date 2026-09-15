@@ -201,6 +201,9 @@ function handleDecision_(p) {
       audit_('REJECTED', { ref: ref, status: STATUS.REJECTED, detail: 'Rejected via email link' });
       return decisionPage_('Report rejected', ref + ' was marked REJECTED. Nothing was filed to the official Drive folder.', true);
     }
+    if (action === 'approve' && getReviewStatus_(ref) === STATUS.COMPLETED) {
+      return decisionPage_('Already filed', ref + ' was already approved and filed to the official Drive folder. Nothing was saved twice.', true);
+    }
     setReviewStatus_(ref, STATUS.APPROVED);
     audit_('APPROVED', { ref: ref, status: STATUS.APPROVED, detail: 'Approved via email link' });
     var result = fileApproved_(ref);
@@ -1217,6 +1220,20 @@ function setReviewStatus_(ref, status) {
   } catch (e) { logError_(e); }
 }
 
+/** Current review status for a reference (latest matching row), or ''. */
+function getReviewStatus_(ref) {
+  try {
+    var sheet = getSpreadsheet_().getSheetByName('Responses');
+    if (!sheet) return '';
+    var col = reviewColumn_(sheet);
+    var refs = sheet.getRange(1, 1, sheet.getLastRow(), 1).getValues();
+    for (var i = refs.length - 1; i >= 0; i--) {
+      if (refs[i][0] === ref) return String(sheet.getRange(i + 1, col).getValue() || '');
+    }
+  } catch (e) { logError_(e); }
+  return '';
+}
+
 // ---- Per-location official folders (tab: "Location Folders") ---------------
 var LOC_HEADERS = ['Store Location', 'Official Drive Folder Link', 'Notes'];
 
@@ -1310,11 +1327,17 @@ function fileApproved_(ref) {
     var parent = filingParent_(dest, location, weekStart, weekEnd);
     var target = childFolder_(parent, weekName);
 
-    var moved = 0;
+    var moved = 0, already = 0;
     // Always file the formatted report itself, rebuilt from the stored data,
     // so the week folder gets "MER - <ref>.pdf" even when nothing was uploaded.
-    var pdf = reportPdf_(row, ref);
-    if (pdf) { target.createFile(pdf); moved++; }
+    // Anything already in the week folder is never saved twice.
+    var pdfName = 'MER - ' + ref + '.pdf';
+    if (fileExists_(target, pdfName)) {
+      already++;
+    } else {
+      var pdf = reportPdf_(row, ref);
+      if (pdf) { target.createFile(pdf); moved++; }
+    }
     if (stagingUrl) {
       var m = stagingUrl.match(/folders\/([A-Za-z0-9_\-]+)/);
       if (m) {
@@ -1324,6 +1347,7 @@ function fileApproved_(ref) {
           var f = files.next();
           var nm = f.getName();
           var pretty = nm.indexOf('__') > -1 ? nm.slice(nm.indexOf('__') + 2) : nm;
+          if (fileExists_(target, pretty)) { already++; continue; }
           f.makeCopy(pretty, target);
           moved++;
         }
@@ -1331,7 +1355,7 @@ function fileApproved_(ref) {
     }
     setReviewStatus_(ref, STATUS.COMPLETED);
     audit_('FILED TO OFFICIAL DRIVE', { ref: ref, manager: manager, fileCount: moved, status: STATUS.COMPLETED, detail: target.getUrl() });
-    return 'Filed ' + ref + ' (' + moved + ' file(s)) → ' + weekName;
+    return 'Filed ' + ref + ' (' + moved + ' file(s)' + (already ? ', ' + already + ' already filed — not saved twice' : '') + ') → ' + weekName;
   } catch (err) {
     logError_(err);
     setReviewStatus_(ref, STATUS.FAILED);
@@ -1339,6 +1363,11 @@ function fileApproved_(ref) {
     alertAdmin_('Drive filing failed', 'Reference ' + ref + ' could not be filed into the official folder. It remains in staging. Error: ' + err);
     return 'Filing failed for ' + ref + ' — see Audit Log.';
   }
+}
+
+/** True when a file with this exact name already exists in the folder. */
+function fileExists_(folder, name) {
+  try { return !!name && folder.getFilesByName(name).hasNext(); } catch (e) { return false; }
 }
 
 /**
