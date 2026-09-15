@@ -1419,18 +1419,22 @@ function weekYear_(weekStart) {
  * Picks where the week folder belongs, walking the shop's real filing tree
  * from the configured folder: an optional location level (used when the
  * configured folder is a shared parent like "Finance" holding one folder per
- * location), then year, then month. A week belongs to the month it ENDS in,
- * so a Dec 29 - Jan 4 week files under January. Existing folders are matched
+ * location, e.g. "1. Edgewater"), then an optional "Weekly MER" level, then
+ * year, then month. A week belongs to the month it ENDS in, so a
+ * Dec 29 - Jan 4 week files under January. Existing folders are matched
  * loosely ("8. August 2026" matches "August 2026"; "Edgewater" matches
  * "Miami / Edgewater"). Year and month folders are created when missing —
  * years as plain "2027" (only where the tree already files by year), months
- * in the shop's numbered style "1. January 2027". Location folders are never
- * created — an unknown location files at the configured folder itself.
+ * in the shop's numbered style "1. January 2027". Location and "Weekly MER"
+ * folders are never created — when absent, filing continues from the level
+ * above.
  */
 function filingParent_(dest, location, weekStart, weekEnd) {
   var d = parseYmd_(weekEnd) || parseYmd_(weekStart);
   if (!d) return dest;
   var node = locationChild_(dest, location) || dest;
+  var mer = childContaining_(node, 'weekly mer');
+  if (mer) node = mer;
   var label = Utilities.formatDate(d, tz_(), 'MMMM yyyy');
   var hit = childContaining_(node, label);
   if (hit) return hit;
