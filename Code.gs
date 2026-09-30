@@ -2242,7 +2242,7 @@ function onOpen() {
     .addItem('File all APPROVED reports to Drive', 'menuFileAllApproved')
     .addSeparator()
     .addItem('Remove junk rows (code checks)', 'menuCleanupJunkRows')
-    .addItem('Archive old pending reports', 'menuArchiveOldPending')
+    .addItem('Delete old unapproved reports', 'menuDeleteOldUnapproved')
     .addItem('Set up manager registry', 'setupManagerRegistry')
     .addItem('Set up location folders', 'setupLocationFolders')
     .addToUi();
@@ -2303,11 +2303,12 @@ function menuRequestChanges() {
  * AND stored data that is a verify request, so real reports are never touched.
  */
 /**
- * Menu: mark every PENDING report submitted before this week's Monday as
- * ARCHIVED. Nothing is deleted — the rows stay as history; they simply stop
- * counting as awaiting approval.
+ * Menu: DELETE every report submitted before this week's Monday that was
+ * never approved (status not APPROVED/COMPLETED). Asks for confirmation
+ * with the count first; the deletion is permanent, and an audit entry
+ * records the removed references.
  */
-function menuArchiveOldPending() {
+function menuDeleteOldUnapproved() {
   var ui = SpreadsheetApp.getUi();
   var sheet = getSpreadsheet_().getSheetByName('Responses');
   if (!sheet || sheet.getLastRow() < 2) { ui.alert('No reports found.'); return; }
@@ -2318,21 +2319,20 @@ function menuArchiveOldPending() {
   var targets = [];
   rows.forEach(function (r, i) {
     var status = String(r[col - 1] || '');
-    if (!/^PENDING/.test(status)) return;
+    if (/^(APPROVED|COMPLETED)/.test(status)) return; // approved reports are kept
     var when = new Date(String(r[1]).replace(' ', 'T'));
     if (!isNaN(when.getTime()) && when < monday) targets.push({ row: i + 2, ref: String(r[0] || '') });
   });
-  if (!targets.length) { ui.alert('Nothing to archive — no old pending reports.'); return; }
-  var ok = ui.alert('Archive old pending reports',
-    targets.length + ' report(s) from before this week are still marked PENDING.\n\n' +
-    'Mark them all as ARCHIVED? (Nothing is deleted — they stay in the sheet as history.)', ui.ButtonSet.YES_NO);
+  if (!targets.length) { ui.alert('Nothing to delete — no old unapproved reports.'); return; }
+  var ok = ui.alert('Delete old unapproved reports',
+    targets.length + ' report(s) from before this week were never approved.\n\n' +
+    'DELETE them permanently from the sheet? This cannot be undone.', ui.ButtonSet.YES_NO);
   if (ok !== ui.Button.YES) return;
-  targets.forEach(function (t) { sheet.getRange(t.row, col).setValue('ARCHIVED'); });
-  audit_('OLD PENDING ARCHIVED', { fileCount: targets.length, status: 'CLEANUP',
+  for (var i = targets.length - 1; i >= 0; i--) sheet.deleteRow(targets[i].row);
+  audit_('OLD UNAPPROVED DELETED', { fileCount: targets.length, status: 'CLEANUP',
     detail: 'Refs: ' + targets.map(function (t) { return t.ref; }).join(', ').slice(0, 900) });
-  ui.alert('Done — ' + targets.length + ' old report(s) archived.');
+  ui.alert('Done — ' + targets.length + ' old unapproved report(s) deleted.');
 }
-
 function menuCleanupJunkRows() {
   var ui = SpreadsheetApp.getUi();
   var sheet = getSpreadsheet_().getSheetByName('Responses');
