@@ -1136,12 +1136,13 @@
     AREA_SHOPS.forEach(function (shop) {
       tue += '<div class="group" data-shop="' + shop + '"><h3>' + shop + "</h3>" +
         '<div class="seg-label">MER reviewed *</div>' + segHtml("mer_" + shop, [["All good", "ok"], ["Issue found", "no"]]) +
-        '<div class="seg-label">Tuesday report reviewed *</div>' + segHtml("report_" + shop, [["All good", "ok"], ["Issue found", "no"]]) +
-        '<div class="seg-label">Squire duplicates *</div>' + segHtml("dup_" + shop, [["Merged", "ok"], ["None found", "na"]]) +
         '<div class="field area-notes" data-notes="' + shop + '" style="display:none;margin-top:10px"><label>Notes (required for issues) *</label>' +
         '<textarea data-notesbox="' + shop + '" placeholder="What did you find at ' + shop + '?"></textarea></div></div>';
     });
     tue += '<div class="group"><h3>Once this week</h3>' +
+      '<div class="field"><label>Squire duplicates merged this week *</label>' +
+      '<input type="text" inputmode="numeric" id="areaDups" placeholder="0">' +
+      '<div class="hint">Minimum 30 per week while we clear the backlog (there are thousands).</div></div>' +
       '<div class="seg-label">Careers form replies *</div>' + segHtml("careers", [["Done", "ok"], ["None this week", "na"]]) +
       '<div class="seg-label">Training paperwork printed *</div>' + segHtml("training", [["Yes", "ok"], ["Need to reprint", "no"]]) +
       '<div class="seg-label">Holiday campaigns scheduled *</div>' + segHtml("campaigns", [["Yes", "ok"], ["No holiday coming", "na"], ["Not yet", "no"]]) +
@@ -1169,7 +1170,7 @@
     // show/require notes per shop when an issue is picked
     AREA_SHOPS.forEach(function (shop) {
       var root = $("#areaTueForm");
-      var issue = segValue(root, "mer_" + shop) === "Issue found" || segValue(root, "report_" + shop) === "Issue found";
+      var issue = segValue(root, "mer_" + shop) === "Issue found";
       var wrap = root.querySelector('[data-notes="' + shop + '"]');
       if (wrap) wrap.style.display = issue ? "" : "none";
     });
@@ -1221,7 +1222,7 @@
       seg.dataset.val = lab.dataset.val;
       Array.prototype.slice.call(seg.children).forEach(function (l) { l.classList.remove("sel-ok", "sel-no", "sel-na"); });
       lab.classList.add("sel-" + lab.dataset.tone);
-      if (seg.dataset.seg.indexOf("mer_") === 0 || seg.dataset.seg.indexOf("report_") === 0) areaTueRefresh();
+      if (seg.dataset.seg.indexOf("mer_") === 0) areaTueRefresh();
       if (seg.dataset.seg.indexOf("camp_") === 0) {
         var shop = seg.dataset.seg.slice(5);
         var why = $("#areaFriForm").querySelector('[data-whywrap="' + shop + '"]');
@@ -1245,13 +1246,12 @@
       AREA_SHOPS.forEach(function (shop) {
         shops[shop] = {
           mer: segValue(root, "mer_" + shop),
-          report: segValue(root, "report_" + shop),
-          duplicates: segValue(root, "dup_" + shop),
           notes: root.querySelector('[data-notesbox="' + shop + '"]').value.trim()
         };
       });
       return {
         checkType: "tuesday", shops: shops,
+        duplicates: $("#areaDups").value,
         careers: segValue(root, "careers"), training: segValue(root, "training"),
         campaigns: segValue(root, "campaigns"), forNicole: $("#areaForNicole").value.trim()
       };
@@ -1274,10 +1274,10 @@
       AREA_SHOPS.forEach(function (shop) {
         var s = d.shops[shop];
         if (!s.mer) p.push(shop + ": pick an answer for MER reviewed.");
-        if (!s.report) p.push(shop + ": pick an answer for Tuesday report.");
-        if (!s.duplicates) p.push(shop + ": pick an answer for Squire duplicates.");
-        if ((s.mer === "Issue found" || s.report === "Issue found") && !s.notes) p.push(shop + ": notes are required when an issue is found.");
+        if (s.mer === "Issue found" && !s.notes) p.push(shop + ": notes are required when an issue is found.");
       });
+      var dups = parseInt(String(d.duplicates).replace(/[^0-9]/g, ""), 10);
+      if (isNaN(dups) || dups < 30) p.push("Enter how many Squire duplicates you merged — minimum 30 per week while we clear the backlog.");
       if (!d.careers) p.push("Pick an answer for Careers form replies.");
       if (!d.training) p.push("Pick an answer for Training paperwork.");
       if (!d.campaigns) p.push("Pick an answer for Holiday campaigns.");

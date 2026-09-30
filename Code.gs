@@ -164,7 +164,7 @@ function doGet(e) {
   var p = (e && e.parameter) || {};
   // One-click approve / reject straight from the notification email.
   if (p.a === 'approve' || p.a === 'reject') return handleDecision_(p);
-  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v7 — area manager check-in' });
+  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v8 — check-in: 30-duplicate minimum' });
 }
 
 // ---- Signed approval links -------------------------------------------------
@@ -1839,27 +1839,29 @@ function validateTuesday_(data) {
   var shops = {};
   AREA_SHOPS.forEach(function (shop) {
     var s = (data.shops && data.shops[shop]) || {};
-    var mer = clean_(s.mer, 20), rep = clean_(s.report, 20), dup = clean_(s.duplicates, 20);
+    var mer = clean_(s.mer, 20);
     var notes = clean_(s.notes, 1200);
     if (['All good', 'Issue found'].indexOf(mer) === -1) problems.push(shop + ': pick an answer for MER reviewed.');
-    if (['All good', 'Issue found'].indexOf(rep) === -1) problems.push(shop + ': pick an answer for Tuesday report.');
-    if (['Merged', 'None found'].indexOf(dup) === -1) problems.push(shop + ': pick an answer for Squire duplicates.');
-    var hasIssue = mer === 'Issue found' || rep === 'Issue found';
-    if (hasIssue && !notes) problems.push(shop + ': notes are required when an issue is found.');
-    if (hasIssue) issues.push(shop);
-    shops[shop] = { mer: mer, report: rep, duplicates: dup, notes: notes };
+    if (mer === 'Issue found' && !notes) problems.push(shop + ': notes are required when an issue is found.');
+    if (mer === 'Issue found') issues.push(shop);
+    shops[shop] = { mer: mer, notes: notes };
   });
+  // Squire duplicates: a weekly count with a 30-merge minimum while the
+  // backlog (thousands of duplicate client profiles) is being cleared.
+  var dups = Math.floor(num_(data.duplicates));
+  if (!(dups >= 30)) problems.push('Merge at least 30 Squire duplicates this week (there are thousands in the backlog) and enter how many you merged.');
   var careers = clean_(data.careers, 30), training = clean_(data.training, 30), campaigns = clean_(data.campaigns, 30);
   if (['Done', 'None this week'].indexOf(careers) === -1) problems.push('Pick an answer for Careers form replies.');
   if (['Yes', 'Need to reprint'].indexOf(training) === -1) problems.push('Pick an answer for Training paperwork.');
   if (['Yes', 'No holiday coming', 'Not yet'].indexOf(campaigns) === -1) problems.push('Pick an answer for Holiday campaigns.');
   var forNicole = clean_(data.forNicole, 1500);
-  var summary = issues.length ? 'Issues at: ' + issues.join(', ') : 'All good at all shops';
-  if (training === 'Need to reprint') summary += ' · training paperwork needs reprint';
-  if (campaigns === 'Not yet') summary += ' · holiday campaigns not scheduled yet';
+  var summary = (issues.length ? 'Issues at: ' + issues.join(', ') : 'All good at all shops') +
+    ' \u00b7 ' + dups + ' duplicates merged';
+  if (training === 'Need to reprint') summary += ' \u00b7 training paperwork needs reprint';
+  if (campaigns === 'Not yet') summary += ' \u00b7 holiday campaigns not scheduled yet';
   return {
     ok: problems.length === 0, problems: problems, issues: issues, summary: summary,
-    payload: { shops: shops, careers: careers, training: training, campaigns: campaigns, forNicole: forNicole }
+    payload: { shops: shops, duplicates: dups, careers: careers, training: training, campaigns: campaigns, forNicole: forNicole }
   };
 }
 
@@ -1897,12 +1899,9 @@ function sendAreaEmail_(ref, who, type, check, now) {
     AREA_SHOPS.forEach(function (shop) {
       var s = check.payload.shops[shop];
       if (type === 'tuesday') {
-        var bad = s.mer === 'Issue found' || s.report === 'Issue found';
         rows += '<tr><td style="padding:6px 10px;font-weight:700">' + esc_(shop) + '</td>' +
-          '<td style="padding:6px 10px;color:' + (s.mer === 'Issue found' ? '#a3271a' : '#1f8a4c') + '">' + esc_(s.mer) + '</td>' +
-          '<td style="padding:6px 10px;color:' + (s.report === 'Issue found' ? '#a3271a' : '#1f8a4c') + '">' + esc_(s.report) + '</td>' +
-          '<td style="padding:6px 10px">' + esc_(s.duplicates) + '</td></tr>' +
-          (s.notes ? '<tr><td></td><td colspan="3" style="padding:0 10px 8px;color:#555;font-size:13px">📝 ' + esc_(s.notes) + '</td></tr>' : '');
+          '<td style="padding:6px 10px;color:' + (s.mer === 'Issue found' ? '#a3271a' : '#1f8a4c') + '">MER: ' + esc_(s.mer) + '</td></tr>' +
+          (s.notes ? '<tr><td></td><td style="padding:0 10px 8px;color:#555;font-size:13px">📝 ' + esc_(s.notes) + '</td></tr>' : '');
       } else {
         rows += '<tr><td style="padding:6px 10px;font-weight:700">' + esc_(shop) + '</td>' +
           '<td style="padding:6px 10px">' + money_(s.sales) + ' / ' + money_(s.goal) + '</td>' +
@@ -1914,7 +1913,7 @@ function sendAreaEmail_(ref, who, type, check, now) {
     var extra = '';
     if (type === 'tuesday') {
       var p = check.payload;
-      extra = '<p style="color:#444">Careers replies: <b>' + esc_(p.careers) + '</b> · Training paperwork: <b>' + esc_(p.training) +
+      extra = '<p style="color:#444">Squire duplicates merged: <b>' + p.duplicates + '</b> (min 30) \u00b7 Careers replies: <b>' + esc_(p.careers) + '</b> · Training paperwork: <b>' + esc_(p.training) +
         '</b> · Holiday campaigns: <b>' + esc_(p.campaigns) + '</b></p>' +
         (p.forNicole ? '<div style="background:#fdf6e3;border:1px solid #e8d48a;border-radius:8px;padding:10px 14px"><b>For Nicole:</b> ' + esc_(p.forNicole) + '</div>' : '');
     }
