@@ -22,6 +22,7 @@
 var DEFAULTS = {
   OFFICE_EMAIL: 'info@barberandco.miami',
   AREA_EMAIL: 'barberandco@barberandco.miami', // area manager check-ins go here
+  ORDER_EMAIL: 'Khrismarie1992@gmail.com',      // order lists (product + supply) also go here
   ADMIN_EMAIL: '',            // security alerts (falls back to OFFICE_EMAIL)
   DRIVE_FOLDER_ID: '',        // PRIVATE staging parent (auto-created if blank)
   OFFICIAL_FOLDER_ID: '',     // official MER folder — files land here only after APPROVAL
@@ -164,7 +165,7 @@ function doGet(e) {
   var p = (e && e.parameter) || {};
   // One-click approve / reject straight from the notification email.
   if (p.a === 'approve' || p.a === 'reject') return handleDecision_(p);
-  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v8 — check-in: 30-duplicate minimum' });
+  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v9 — order lists emailed to Krystal' });
 }
 
 // ---- Signed approval links -------------------------------------------------
@@ -1126,7 +1127,7 @@ function sendOrderEmail_(data, ref, to) {
     ' – ' + (clean_(m.weekStart, 30) || '') + (m.weekEnd ? ' to ' + clean_(m.weekEnd, 30) : '');
   try {
     MailApp.sendEmail({
-      to: to || cfg('OFFICE_EMAIL'),
+      to: to || (cfg('OFFICE_EMAIL') + (cfg('ORDER_EMAIL') ? ',' + cfg('ORDER_EMAIL') : '')),
       subject: subject,
       body: orderListText_(items, data, ref),
       htmlBody: orderListHtml_(items, data, ref),
