@@ -1021,11 +1021,10 @@
         .then(function (r) { return r.json(); })
         .then(function (d) {
           if (d && d.status === "success" && d.token) {
-            session = { token: d.token, name: (d.manager || {}).name || "", location: (d.manager || {}).location || "" };
+            session = { token: d.token, name: (d.manager || {}).name || "", location: (d.manager || {}).location || "", isAdmin: !!(d.manager || {}).isAdmin };
             saveSession(session);
             $("#gateCard").style.display = "none";
-            form.style.display = "";
-            startForm();
+            afterAuth();
           } else {
             fail((d && d.message) || "That access code is not recognized.");
           }
@@ -1063,8 +1062,155 @@
   function init() {
     session = loadSession();
     if (!session) { showGate(); return; }
+    afterAuth();
+  }
+
+  /** After a verified session: admins choose report vs office docs; managers go straight to the report. */
+  function afterAuth() {
+    if (session && session.isAdmin) { showChooser(); return; }
+    showReportForm();
+  }
+
+  function showChooser() {
+    form.style.display = "none";
+    $("#officeCard").style.display = "none";
+    $("#chooserCard").style.display = "";
+    if (!showChooser.__init) {
+      showChooser.__init = true;
+      $("#chooseReport").addEventListener("click", showReportForm);
+      $("#chooseOffice").addEventListener("click", showOffice);
+    }
+  }
+
+  var formStarted = false;
+  function showReportForm() {
+    $("#chooserCard").style.display = "none";
+    $("#officeCard").style.display = "none";
     form.style.display = "";
-    startForm();
+    if (!formStarted) { formStarted = true; startForm(); }
+  }
+
+  // =========================================================================
+  // OFFICE DOCUMENTS (admins) — commission payouts, hostess hours,
+  // bank & checks, monthly expense reports. Filed instantly on submit.
+  // =========================================================================
+  var OFFICE_ACCEPTED_EXT = ["pdf", "jpg", "jpeg", "png", "heic", "xlsx", "xls", "csv"];
+  var odUploads = [];
+
+  function showOffice() {
+    $("#chooserCard").style.display = "none";
+    form.style.display = "none";
+    $("#officeCard").style.display = "";
+    initOffice();
+  }
+
+  function odToggle() {
+    var t = $("#odType").value;
+    $("#odLocWrap").style.display = (t === "commission" || t === "hostess") ? "" : "none";
+    $("#odWeekWrap").style.display = (t === "commission" || t === "hostess" || t === "bank") ? "" : "none";
+    $("#odMonthWrap").style.display = (t === "expense") ? "" : "none";
+  }
+
+  function odRenderFiles() {
+    var list = $("#odFileList");
+    if (!odUploads.length) { list.textContent = "No files chosen yet."; return; }
+    list.innerHTML = "";
+    odUploads.forEach(function (f, idx) {
+      var row = document.createElement("div");
+      row.style.cssText = "display:flex;align-items:center;gap:8px;padding:4px 0";
+      var span = document.createElement("span");
+      span.textContent = "📄 " + f.name;
+      var x = document.createElement("button");
+      x.type = "button"; x.textContent = "×";
+      x.style.cssText = "border:none;background:#eee;border-radius:50%;width:22px;height:22px;cursor:pointer";
+      x.setAttribute("aria-label", "Remove file");
+      x.onclick = function () { odUploads.splice(idx, 1); odRenderFiles(); };
+      row.appendChild(span); row.appendChild(x); list.appendChild(row);
+    });
+  }
+
+  function odFail(msg) {
+    var err = $("#odError");
+    err.textContent = msg; err.style.display = "block";
+  }
+
+  function initOffice() {
+    if (initOffice.__init) return;
+    initOffice.__init = true;
+    odRenderFiles();
+    $("#odType").addEventListener("change", odToggle);
+    $("#odWeekStart").addEventListener("change", function () {
+      var v = this.value;
+      if (v && !$("#odWeekEnd").value) {
+        var d = new Date(v + "T12:00:00");
+        d.setDate(d.getDate() + 6);
+        $("#odWeekEnd").value = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+      }
+    });
+    $("#odFiles").addEventListener("change", function () {
+      var files = Array.prototype.slice.call(this.files || []); this.value = "";
+      $("#odError").style.display = "none";
+      files.forEach(function (file) {
+        var ext = (String(file.name).toLowerCase().match(/\.([a-z0-9]+)$/) || [])[1] || "";
+        if (OFFICE_ACCEPTED_EXT.indexOf(ext) === -1) { odFail("“" + file.name + "” isn't an accepted type (PDF, JPG, PNG, HEIC, Excel, CSV)."); return; }
+        if (file.size > MAX_FILE_MB * 1024 * 1024) { odFail("“" + file.name + "” is larger than " + MAX_FILE_MB + " MB."); return; }
+        compressImage(file).then(function (obj) {
+          if (!obj) { odFail("Couldn't read “" + file.name + "”."); return; }
+          odUploads.push(obj); odRenderFiles();
+        });
+      });
+    });
+    $("#odBack").addEventListener("click", showChooser);
+    $("#odSubmit").addEventListener("click", odSubmit);
+  }
+
+  function odSubmit() {
+    var err = $("#odError"), ok = $("#odSuccess"), btn = $("#odSubmit");
+    err.style.display = "none"; ok.style.display = "none";
+    var t = $("#odType").value;
+    if (!t) { odFail("Please choose a document type."); return; }
+    var needsLoc = (t === "commission" || t === "hostess");
+    var location = $("#odLocation").value;
+    if (needsLoc && !location) { odFail("Please choose a location."); return; }
+    var weekStart = $("#odWeekStart").value, weekEnd = $("#odWeekEnd").value, month = $("#odMonth").value;
+    if (t !== "expense" && (!weekStart || !weekEnd)) { odFail("Please pick the week start and end dates."); return; }
+    if (t === "expense" && !month) { odFail("Please pick the month."); return; }
+    if (!odUploads.length) { odFail("Please attach at least one file."); return; }
+
+    btn.disabled = true; btn.textContent = "Filing…";
+    var payload = {
+      action: "officedoc",
+      token: session && session.token,
+      submissionId: uuid(),
+      docType: t,
+      location: needsLoc ? location : "",
+      weekStart: weekStart, weekEnd: weekEnd, month: month,
+      uploads: { office: odUploads }
+    };
+    fetch(ENDPOINT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload)
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        btn.disabled = false; btn.textContent = "Submit & File";
+        if (d && d.status === "success") {
+          odUploads = []; odRenderFiles();
+          ok.innerHTML = "✅ <strong>Filed!</strong> Saved to <strong>" + escapeHtml(d.filedTo || "Drive") + "</strong>.<br>Reference: " + escapeHtml(d.ref || "");
+          ok.style.display = "";
+        } else if (d && /access code|session has expired/i.test(d.message || "")) {
+          clearSession(); session = null;
+          $("#officeCard").style.display = "none";
+          showGate();
+        } else {
+          odFail((d && d.message) || "The server could not file the document. Please try again.");
+        }
+      })
+      .catch(function () {
+        btn.disabled = false; btn.textContent = "Submit & File";
+        odFail("Couldn't reach the server. Check your connection and try again.");
+      });
   }
 
   function startForm() {

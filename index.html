@@ -224,6 +224,71 @@
     </div>
   </div>
 
+  <!-- Admin chooser: weekly report or office documents -->
+  <div class="card" id="chooserCard" style="display:none">
+    <div class="brand"><div class="name">BARBER &amp; CO</div><div class="miami">Miami</div></div>
+    <div class="title-bar">What are you submitting?</div>
+    <div style="padding:26px 20px 30px;max-width:380px;margin:0 auto;display:flex;flex-direction:column;gap:14px">
+      <button type="button" class="submit" id="chooseReport" style="width:100%">📋 Weekly Manager Report</button>
+      <button type="button" class="submit" id="chooseOffice" style="width:100%;background:var(--gold-dark)">🗂️ Office Documents</button>
+      <p style="text-align:center;color:var(--muted);font-size:12px;margin:4px 0 0">
+        Office documents: commission payouts, hostess hours, bank &amp; checks, monthly expense reports.
+      </p>
+    </div>
+  </div>
+
+  <!-- Office documents: admin-only direct filing -->
+  <div class="card" id="officeCard" style="display:none">
+    <div class="brand"><div class="name">BARBER &amp; CO</div><div class="miami">Miami</div></div>
+    <div class="title-bar">Office Documents</div>
+    <div style="padding:22px 20px 30px;max-width:420px;margin:0 auto">
+      <div class="field">
+        <label for="odType">Document type *</label>
+        <select id="odType">
+          <option value="">Select…</option>
+          <option value="commission">Commission Payout</option>
+          <option value="hostess">Hostess Hours Report</option>
+          <option value="bank">Bank &amp; Checks</option>
+          <option value="expense">Monthly Expense Report</option>
+        </select>
+      </div>
+      <div class="field" id="odLocWrap" style="display:none">
+        <label for="odLocation">Location *</label>
+        <select id="odLocation">
+          <option value="">Select…</option>
+          <option>Miami / Edgewater</option>
+          <option>Pinecrest</option>
+          <option>Studio</option>
+        </select>
+      </div>
+      <div id="odWeekWrap" style="display:none">
+        <div class="field">
+          <label for="odWeekStart">Week start *</label>
+          <input type="date" id="odWeekStart">
+        </div>
+        <div class="field">
+          <label for="odWeekEnd">Week end *</label>
+          <input type="date" id="odWeekEnd">
+        </div>
+      </div>
+      <div class="field" id="odMonthWrap" style="display:none">
+        <label for="odMonth">Month *</label>
+        <input type="month" id="odMonth">
+      </div>
+      <div class="field">
+        <label class="upload-btn" style="width:100%;justify-content:center">
+          <input type="file" id="odFiles" accept=".pdf,.jpg,.jpeg,.png,.heic,.xlsx,.xls,.csv,image/*,application/pdf" multiple style="display:none">
+          📎 Choose file(s)
+        </label>
+        <div id="odFileList" style="font-size:13px;color:var(--muted);margin-top:8px"></div>
+      </div>
+      <div class="error-note" id="odError"></div>
+      <div id="odSuccess" style="display:none;background:#f0f7f1;border:1px solid #cfe5d3;border-radius:10px;padding:14px 16px;margin:10px 0;font-size:14px"></div>
+      <button type="button" class="submit" id="odSubmit" style="width:100%">Submit &amp; File</button>
+      <button type="button" id="odBack" style="width:100%;background:none;border:none;color:var(--muted);margin-top:12px;cursor:pointer;font-size:13.5px">← Back</button>
+    </div>
+  </div>
+
   <div class="restore-banner" id="restoreBanner">
     <span>📝 We restored your unsaved report from this device.</span>
     <button type="button" id="discardDraft">Start fresh</button>
@@ -589,6 +654,6 @@
 
 <!-- Version query busts browser caches whenever the app changes.
      Bump this value on every deploy so managers always get the latest form. -->
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>
