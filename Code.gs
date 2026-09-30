@@ -21,6 +21,7 @@
 // ---- Configuration keys (Script Properties) --------------------------------
 var DEFAULTS = {
   OFFICE_EMAIL: 'info@barberandco.miami',
+  AREA_EMAIL: 'barberandco@barberandco.miami', // area manager check-ins go here
   ADMIN_EMAIL: '',            // security alerts (falls back to OFFICE_EMAIL)
   DRIVE_FOLDER_ID: '',        // PRIVATE staging parent (auto-created if blank)
   OFFICIAL_FOLDER_ID: '',     // official MER folder — files land here only after APPROVAL
@@ -163,7 +164,7 @@ function doGet(e) {
   var p = (e && e.parameter) || {};
   // One-click approve / reject straight from the notification email.
   if (p.a === 'approve' || p.a === 'reject') return handleDecision_(p);
-  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v6 — office documents' });
+  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v7 — area manager check-in' });
 }
 
 // ---- Signed approval links -------------------------------------------------
@@ -273,6 +274,9 @@ function doPost(e) {
     // 2d-bis) OFFICE DOCUMENTS — commission payouts, hostess hours, bank &
     // checks, monthly expense reports. Admin-only; files straight into Drive.
     if (data.action === 'officedoc') return handleOfficeDoc_(data, mgr, isAdmin);
+
+    // 2d-ter) AREA MANAGER CHECK-IN — Dario's Tuesday / Friday routine.
+    if (data.action === 'areacheck') return handleAreaCheck_(data, mgr);
 
     // 2e) SECURITY SCREENING of attachments (type / size / count / duplicates)
     var screen = screenFiles_(data);
@@ -1775,6 +1779,157 @@ function sendOfficeEmail_(ref, who, typeLabel, location, periodText, names, targ
       to: cfg('OFFICE_EMAIL'),
       subject: subject,
       body: typeLabel + ' filed by ' + who + ' (' + periodText + '). Files: ' + names.join(', ') + '\n' + url,
+      htmlBody: html
+    });
+  } catch (e) { logError_(e); }
+}
+
+// ===========================================================================
+// AREA MANAGER CHECK-IN — Dario's Tuesday and Friday routines. Saved to the
+// "Area Manager Check-ins" tab, audited, and emailed to the office.
+// ===========================================================================
+var AREA_SHOPS = ['Edgewater', 'Pinecrest', 'Studio'];
+var AREA_HEADERS = ['Reference #', 'Submitted At', 'Type', 'Submitted By', 'Summary', 'Full Data (JSON)'];
+
+function handleAreaCheck_(data, mgr) {
+  if (clean_(mgr.name, 80).toLowerCase() !== 'dario') {
+    audit_('AREA CHECK BLOCKED', { manager: mgr.name, verification: 'OK', status: STATUS.REJECTED, detail: 'Area manager check-ins are Dario only' });
+    return json({ status: 'error', message: 'Only the area manager can submit check-ins.' });
+  }
+  var type = data.checkType === 'friday' ? 'friday' : 'tuesday';
+  var check = type === 'tuesday' ? validateTuesday_(data) : validateFriday_(data);
+  if (!check.ok) return json({ status: 'error', message: check.problems.join(' ') });
+
+  var cache = CacheService.getScriptCache();
+  var subId = sanitizeToken_(data.submissionId) || Utilities.getUuid();
+  var key = 'am_' + subId;
+  var prior = cache.get(key);
+  if (prior) { prior = JSON.parse(prior); return json({ status: 'success', ref: prior.ref, duplicate: true }); }
+
+  var now = new Date();
+  var ref = 'AM-' + Utilities.formatDate(now, tz_(), 'yyyyMMdd') + '-' + randomTail_();
+  try {
+    var sh = ensureAreaSheet_();
+    sh.appendRow([
+      cell_(ref), Utilities.formatDate(now, tz_(), 'yyyy-MM-dd HH:mm:ss'),
+      type === 'tuesday' ? 'Tuesday Check' : 'Friday Sales Check',
+      cell_(mgr.name), cell_(check.summary), cell_(JSON.stringify(check.payload).slice(0, 45000))
+    ]);
+  } catch (e) { logError_(e); }
+  audit_('AREA CHECK SUBMITTED', { ref: ref, manager: mgr.name, verification: 'OK', status: 'FILED', detail: (type === 'tuesday' ? 'Tuesday Check' : 'Friday Sales Check') + ' — ' + check.summary });
+  sendAreaEmail_(ref, mgr.name, type, check, now);
+  cache.put(key, JSON.stringify({ ref: ref }), 21600);
+  return json({ status: 'success', ref: ref });
+}
+
+function ensureAreaSheet_() {
+  var ss = getSpreadsheet_();
+  var sh = ss.getSheetByName('Area Manager Check-ins');
+  if (sh) return sh;
+  sh = ss.insertSheet('Area Manager Check-ins');
+  sh.appendRow(AREA_HEADERS);
+  sh.getRange(1, 1, 1, AREA_HEADERS.length).setFontWeight('bold');
+  sh.setFrozenRows(1);
+  return sh;
+}
+
+/** Validates the Tuesday Check. Returns {ok, problems[], payload, summary, issues}. */
+function validateTuesday_(data) {
+  var problems = [], issues = [];
+  var shops = {};
+  AREA_SHOPS.forEach(function (shop) {
+    var s = (data.shops && data.shops[shop]) || {};
+    var mer = clean_(s.mer, 20), rep = clean_(s.report, 20), dup = clean_(s.duplicates, 20);
+    var notes = clean_(s.notes, 1200);
+    if (['All good', 'Issue found'].indexOf(mer) === -1) problems.push(shop + ': pick an answer for MER reviewed.');
+    if (['All good', 'Issue found'].indexOf(rep) === -1) problems.push(shop + ': pick an answer for Tuesday report.');
+    if (['Merged', 'None found'].indexOf(dup) === -1) problems.push(shop + ': pick an answer for Squire duplicates.');
+    var hasIssue = mer === 'Issue found' || rep === 'Issue found';
+    if (hasIssue && !notes) problems.push(shop + ': notes are required when an issue is found.');
+    if (hasIssue) issues.push(shop);
+    shops[shop] = { mer: mer, report: rep, duplicates: dup, notes: notes };
+  });
+  var careers = clean_(data.careers, 30), training = clean_(data.training, 30), campaigns = clean_(data.campaigns, 30);
+  if (['Done', 'None this week'].indexOf(careers) === -1) problems.push('Pick an answer for Careers form replies.');
+  if (['Yes', 'Need to reprint'].indexOf(training) === -1) problems.push('Pick an answer for Training paperwork.');
+  if (['Yes', 'No holiday coming', 'Not yet'].indexOf(campaigns) === -1) problems.push('Pick an answer for Holiday campaigns.');
+  var forNicole = clean_(data.forNicole, 1500);
+  var summary = issues.length ? 'Issues at: ' + issues.join(', ') : 'All good at all shops';
+  if (training === 'Need to reprint') summary += ' · training paperwork needs reprint';
+  if (campaigns === 'Not yet') summary += ' · holiday campaigns not scheduled yet';
+  return {
+    ok: problems.length === 0, problems: problems, issues: issues, summary: summary,
+    payload: { shops: shops, careers: careers, training: training, campaigns: campaigns, forNicole: forNicole }
+  };
+}
+
+/** Validates the Friday Sales Check. Returns {ok, problems[], payload, summary, behind[]}. */
+function validateFriday_(data) {
+  var problems = [], behind = [];
+  var shops = {};
+  AREA_SHOPS.forEach(function (shop) {
+    var s = (data.shops && data.shops[shop]) || {};
+    var sales = num_(s.sales), goal = num_(s.goal);
+    if (!(goal > 0)) problems.push(shop + ': enter the weekly goal.');
+    if (s.sales === undefined || s.sales === null || String(s.sales) === '') problems.push(shop + ': enter sales so far.');
+    var pct = goal > 0 ? (sales / goal - 1) : 0;
+    var isBehind = goal > 0 && pct <= -0.03;
+    var campaign = clean_(s.campaign, 10), why = clean_(s.campaignWhy, 800);
+    if (isBehind) {
+      behind.push(shop);
+      if (['Yes', 'No'].indexOf(campaign) === -1) problems.push(shop + ' is behind — answer "Campaign sent?".');
+      if (campaign === 'No' && !why) problems.push(shop + ': say why no campaign was sent.');
+    }
+    shops[shop] = { sales: sales, goal: goal, pct: Math.round(pct * 1000) / 10, behind: isBehind, campaign: campaign, campaignWhy: why };
+  });
+  var summary = behind.length ? 'BEHIND (3%+): ' + behind.join(', ') : 'All shops on pace';
+  return { ok: problems.length === 0, problems: problems, behind: behind, summary: summary, payload: { shops: shops } };
+}
+
+function sendAreaEmail_(ref, who, type, check, now) {
+  try {
+    var stamp = Utilities.formatDate(now, tz_(), "EEEE, MMMM d 'at' h:mm a");
+    var title = type === 'tuesday' ? 'Tuesday Check' : 'Friday Sales Check';
+    var alert = type === 'tuesday' ? check.issues.length : check.behind.length;
+    var subject = 'Area Manager Check-in – ' + title + ' – ' + Utilities.formatDate(now, tz_(), 'MMM d') +
+      (alert ? ' – ⚠ ATTENTION' : ' – all good');
+    var rows = '';
+    AREA_SHOPS.forEach(function (shop) {
+      var s = check.payload.shops[shop];
+      if (type === 'tuesday') {
+        var bad = s.mer === 'Issue found' || s.report === 'Issue found';
+        rows += '<tr><td style="padding:6px 10px;font-weight:700">' + esc_(shop) + '</td>' +
+          '<td style="padding:6px 10px;color:' + (s.mer === 'Issue found' ? '#a3271a' : '#1f8a4c') + '">' + esc_(s.mer) + '</td>' +
+          '<td style="padding:6px 10px;color:' + (s.report === 'Issue found' ? '#a3271a' : '#1f8a4c') + '">' + esc_(s.report) + '</td>' +
+          '<td style="padding:6px 10px">' + esc_(s.duplicates) + '</td></tr>' +
+          (s.notes ? '<tr><td></td><td colspan="3" style="padding:0 10px 8px;color:#555;font-size:13px">📝 ' + esc_(s.notes) + '</td></tr>' : '');
+      } else {
+        rows += '<tr><td style="padding:6px 10px;font-weight:700">' + esc_(shop) + '</td>' +
+          '<td style="padding:6px 10px">' + money_(s.sales) + ' / ' + money_(s.goal) + '</td>' +
+          '<td style="padding:6px 10px;font-weight:700;color:' + (s.behind ? '#a3271a' : '#1f8a4c') + '">' +
+          (s.pct >= 0 ? '+' : '') + s.pct + '%' + (s.behind ? ' — BEHIND' : '') + '</td>' +
+          '<td style="padding:6px 10px">' + (s.behind ? ('Campaign: ' + esc_(s.campaign) + (s.campaignWhy ? ' — ' + esc_(s.campaignWhy) : '')) : '') + '</td></tr>';
+      }
+    });
+    var extra = '';
+    if (type === 'tuesday') {
+      var p = check.payload;
+      extra = '<p style="color:#444">Careers replies: <b>' + esc_(p.careers) + '</b> · Training paperwork: <b>' + esc_(p.training) +
+        '</b> · Holiday campaigns: <b>' + esc_(p.campaigns) + '</b></p>' +
+        (p.forNicole ? '<div style="background:#fdf6e3;border:1px solid #e8d48a;border-radius:8px;padding:10px 14px"><b>For Nicole:</b> ' + esc_(p.forNicole) + '</div>' : '');
+    }
+    var html =
+      '<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;max-width:640px;margin:0 auto">' +
+      '<div style="font-family:Georgia,serif;font-size:24px;font-weight:800;letter-spacing:1px">BARBER &amp; CO</div>' +
+      '<div style="color:#b8912a;font-style:italic;margin-bottom:14px">Area Manager Check-in</div>' +
+      '<p><b>' + esc_(title) + '</b> — submitted by ' + esc_(who) + ' on ' + stamp + '</p>' +
+      '<p style="font-size:15px;' + (alert ? 'color:#a3271a;font-weight:700' : 'color:#1f8a4c') + '">' + esc_(check.summary) + '</p>' +
+      '<table style="border-collapse:collapse;width:100%;border:1px solid #eee">' + rows + '</table>' + extra +
+      '<p style="color:#888;font-size:12px">Reference ' + esc_(ref) + ' · Logged in the "Area Manager Check-ins" tab.</p></div>';
+    MailApp.sendEmail({
+      to: cfg('AREA_EMAIL') || cfg('OFFICE_EMAIL'),
+      subject: subject,
+      body: title + ' by ' + who + ' — ' + check.summary + ' (ref ' + ref + ')',
       htmlBody: html
     });
   } catch (e) { logError_(e); }

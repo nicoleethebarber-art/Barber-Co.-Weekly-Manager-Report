@@ -161,6 +161,10 @@
   .btn-next:disabled{opacity:.55;cursor:not-allowed}
   .nav .btn-prev[hidden]{display:none}
 
+  .area-tab.on{border-color:var(--gold-dark);background:rgba(212,175,55,.16);color:var(--gold)}
+  .seg-label{font-size:13px;font-weight:700;margin:10px 0 6px}
+  .behind-tag{display:inline-block;background:rgba(224,90,75,.18);color:var(--no);font-weight:800;font-size:12px;border:1px solid var(--no);border-radius:20px;padding:2px 10px;margin-left:8px}
+  .ontrack-tag{display:inline-block;background:rgba(52,176,106,.14);color:var(--ok);font-weight:800;font-size:12px;border:1px solid var(--ok);border-radius:20px;padding:2px 10px;margin-left:8px}
   .submit{background:var(--mustard);color:#111;border:none;border-radius:999px;padding:15px;font-size:15px;font-weight:800;cursor:pointer;min-height:50px}
   .submit:disabled{opacity:.55;cursor:not-allowed}
   .error-note{display:none;background:rgba(224,90,75,.12);color:var(--warn);border:1px solid rgba(224,90,75,.4);border-radius:10px;padding:12px 14px;font-size:14px;margin:0 0 12px}
@@ -235,6 +239,7 @@
     <div style="padding:26px 20px 30px;max-width:380px;margin:0 auto;display:flex;flex-direction:column;gap:14px">
       <button type="button" class="submit" id="chooseReport" style="width:100%">📋 Weekly Manager Report</button>
       <button type="button" class="submit" id="chooseOffice" style="width:100%;background:var(--gold-dark)">🗂️ Office Documents</button>
+      <button type="button" class="submit" id="chooseArea" style="width:100%;display:none">🧭 Area Manager Check-in</button>
       <p style="text-align:center;color:var(--muted);font-size:12px;margin:4px 0 0">
         Office documents: commission payouts, hostess hours, bank &amp; checks, monthly expense reports.
       </p>
@@ -290,6 +295,33 @@
       <div id="odSuccess" style="display:none;background:rgba(52,176,106,.12);border:1px solid rgba(52,176,106,.4);border-radius:10px;padding:14px 16px;margin:10px 0;font-size:14px"></div>
       <button type="button" class="submit" id="odSubmit" style="width:100%">Submit &amp; File</button>
       <button type="button" id="odBack" style="width:100%;background:none;border:none;color:var(--muted);margin-top:12px;cursor:pointer;font-size:13.5px">← Back</button>
+    </div>
+  </div>
+
+  <!-- Area Manager Check-in: Dario's Tuesday / Friday routine -->
+  <div class="card" id="areaCard" style="display:none">
+    <div class="brand"><div class="name">BARBER &amp; CO</div><div class="miami">Area Manager</div></div>
+    <div class="title-bar">Area Manager Check-in</div>
+    <div style="padding:18px 16px 30px;max-width:520px;margin:0 auto">
+      <details class="collapse">
+        <summary>📋 Your duties (tap to read)</summary>
+        <div class="inner" style="font-size:14px">
+          <p style="margin:0 0 10px"><b>Tuesday:</b> check MERs and Tuesday reports, merge Squire duplicates, reply to Careers Form submissions, make sure training and new-hire paperwork is printed, schedule Squire Engage campaigns for upcoming holidays.</p>
+          <p style="margin:0 0 10px"><b>Friday:</b> check each shop's sales vs weekly goal. If a shop is 3% or more behind, send a Squire Engage campaign.</p>
+          <p style="margin:0 0 10px"><b>As needed:</b> hiring and training new barbers, shop walkthroughs.</p>
+          <p style="margin:0"><b>Monthly:</b> sit-down with Nicole with one improvement idea.</p>
+        </div>
+      </details>
+      <div class="status-opts" style="grid-template-columns:1fr 1fr;margin:16px 0 6px">
+        <label class="area-tab" id="areaTabTue">✅ Tuesday Check</label>
+        <label class="area-tab" id="areaTabFri">💰 Friday Sales</label>
+      </div>
+      <div id="areaTueForm" style="display:none"></div>
+      <div id="areaFriForm" style="display:none"></div>
+      <div class="error-note" id="areaError"></div>
+      <div id="areaSuccess" style="display:none;background:rgba(52,176,106,.12);border:1px solid rgba(52,176,106,.4);border-radius:10px;padding:14px 16px;margin:10px 0;font-size:14px"></div>
+      <button type="button" class="submit" id="areaSubmit" style="width:100%;display:none">Submit Check-in</button>
+      <button type="button" id="areaBack" style="width:100%;background:none;border:none;color:var(--muted);margin-top:12px;cursor:pointer;font-size:13.5px">← Back</button>
     </div>
   </div>
 
@@ -658,6 +690,6 @@
 
 <!-- Version query busts browser caches whenever the app changes.
      Bump this value on every deploy so managers always get the latest form. -->
-<script src="app.js?v=10"></script>
+<script src="app.js?v=11"></script>
 </body>
 </html>
