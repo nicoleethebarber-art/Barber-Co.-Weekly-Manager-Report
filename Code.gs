@@ -165,7 +165,7 @@ function doGet(e) {
   var p = (e && e.parameter) || {};
   // One-click approve / reject straight from the notification email.
   if (p.a === 'approve' || p.a === 'reject') return handleDecision_(p);
-  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v12 — dashboard cleanup button' });
+  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v13 — report viewer' });
 }
 
 // ---- Signed approval links -------------------------------------------------
@@ -287,6 +287,9 @@ function doPost(e) {
 
     // 2d-sexies) ADMIN CLEANUP — delete old unapproved reports (dashboard button).
     if (data.action === 'cleanupOld') return handleCleanupOld_(data, mgr, isAdmin);
+
+    // 2d-septies) REPORT VIEWER — open one submission's full answers (dashboard).
+    if (data.action === 'reportDetail') return handleReportDetail_(data, mgr, isAdmin);
 
     // 2e) SECURITY SCREENING of attachments (type / size / count / duplicates)
     var screen = screenFiles_(data);
@@ -2205,7 +2208,7 @@ function handleDashboard_(data, mgr, isAdmin) {
       var rows = sh.getRange(2, 1, sh.getLastRow() - 1, 5).getValues();
       rows.forEach(function (r) {
         var when = cellDate_(r[1]);
-        if (when && when >= monday) out[String(r[2])] = { at: String(r[1]), summary: String(r[4] || '') };
+        if (when && when >= monday) out[String(r[2])] = { ref: String(r[0] || ''), at: String(r[1]), summary: String(r[4] || '') };
       });
       return out;
     }
@@ -2219,7 +2222,7 @@ function handleDashboard_(data, mgr, isAdmin) {
       var orows = osh.getRange(2, 1, osh.getLastRow() - 1, 6).getValues();
       orows.forEach(function (r) {
         var when = cellDate_(r[1]);
-        if (when && when >= monday) office.push({ type: String(r[3] || ''), location: String(r[4] || ''), period: String(r[5] || ''), by: String(r[2] || '') });
+        if (when && when >= monday) office.push({ ref: String(r[0] || ''), type: String(r[3] || ''), location: String(r[4] || ''), period: String(r[5] || ''), by: String(r[2] || '') });
       });
     }
 
@@ -2240,6 +2243,146 @@ function handleDashboard_(data, mgr, isAdmin) {
     logError_(err);
     return json({ status: 'error', message: 'Could not load the dashboard. Try again.' });
   }
+}
+
+// ===========================================================================
+// REPORT VIEWER — the admin taps any report on the dashboard and reads every
+// answer inside it, not just the one-line summary.
+// ===========================================================================
+var DETAIL_LABELS = {
+  mer: 'MER reviewed', notes: 'Notes', duplicates: 'Squire duplicates merged this week',
+  careers: 'Careers form replies', training: 'Training paperwork', campaigns: 'Holiday campaigns',
+  payroll: 'Payroll', sitdown: 'Monthly sit-down with Nicole', idea: 'Idea shared',
+  forNicole: 'Message for Nicole', shops: 'Shops', sales: 'Sales', goal: 'Weekly goal',
+  pct: '% vs goal', behind: 'Behind pace', campaign: 'Campaign sent', campaignWhy: 'Why no campaign',
+  resolved: 'Discrepancies resolved', attaf: 'ATTAF sent', attafWhy: 'Why ATTAF not sent',
+  hires: 'New hires / exits', hiresNotes: 'Hire details', reviews: 'Google reviews checked',
+  thisWeek: 'This week', lastWeek: 'Last week', down: 'Down vs last week', chat: 'Managers chat',
+  monthly: 'Monthly duties', week: 'Week of month', card: 'Chase card shares', share: 'Card share',
+  paperwork: 'Employee paperwork', inventory: 'Inventory count', lowItems: 'Running low',
+  order: 'Supply order', orderNotes: 'Order notes', delivery: 'Order delivery',
+  deliveryNotes: 'Delivery notes', perfReport: 'Monthly performance report',
+  manager: 'Manager info', name: 'Name', storeLocation: 'Store location',
+  weekStart: 'Week start', weekEnd: 'Week end', weekOfMonth: 'Week of month',
+  salesToDate: 'Sales to date', salesGoal: 'Sales goal', contact: 'Contact',
+  marketing: 'Marketing', services: 'Services', expenses: 'Expenses', items: 'Items',
+  attendance: 'Attendance', late: 'Late', absent: 'Absent', entries: 'Entries',
+  uploads: 'Files attached', signature: 'Signed by', total: 'Total', amount: 'Amount'
+};
+
+function prettyKey_(k) {
+  if (DETAIL_LABELS.hasOwnProperty(k)) return DETAIL_LABELS[k];
+  var s = String(k).replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_\-]+/g, ' ').toLowerCase();
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** Flattens a saved payload into readable label/value rows (skips empties). */
+function detailRows_(value, out, depth, label) {
+  if (out.length >= 250) return out;
+  var empty = value === null || value === undefined || value === '' ||
+    (Array.isArray(value) && !value.length) ||
+    (typeof value === 'object' && value !== null && !Array.isArray(value) && !Object.keys(value).length);
+  if (empty) return out;
+  if (typeof value !== 'object') {
+    out.push({ label: label, value: clean_(value === true ? 'Yes' : value === false ? 'No' : String(value), 2000), sub: depth, head: false });
+  } else if (Array.isArray(value)) {
+    if (value.every(function (x) { return x === null || typeof x !== 'object'; })) {
+      out.push({ label: label, value: clean_(value.join(', '), 2000), sub: depth, head: false });
+    } else {
+      out.push({ label: label, value: '', sub: depth, head: true });
+      value.forEach(function (x, i) { detailRows_(x, out, depth + 1, label + ' ' + (i + 1)); });
+    }
+  } else {
+    if (label) out.push({ label: label, value: '', sub: depth, head: true });
+    Object.keys(value).forEach(function (k) {
+      detailRows_(value[k], out, label ? depth + 1 : depth, prettyKey_(k));
+    });
+  }
+  return out;
+}
+
+/** Latest row whose Reference # (column A) matches, or null. */
+function findRowByRef_(sh, ref) {
+  if (!sh || sh.getLastRow() < 2) return null;
+  var vals = sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).getValues();
+  for (var i = vals.length - 1; i >= 0; i--) {
+    if (String(vals[i][0] || '').trim().toUpperCase() === ref.toUpperCase()) return vals[i];
+  }
+  return null;
+}
+
+function fmtCellDate_(v) {
+  var d = cellDate_(v);
+  return d ? Utilities.formatDate(d, tz_(), "EEE, MMM d 'at' h:mm a") : String(v || '');
+}
+
+function handleReportDetail_(data, mgr, isAdmin) {
+  if (!isAdmin) return json({ status: 'error', message: 'Viewing reports is for admins only.' });
+  var ref = clean_(data.ref, 40);
+  if (!ref) return json({ status: 'error', message: 'Missing report reference.' });
+  try {
+    var ss = getSpreadsheet_();
+    var d = null;
+    if (/^AM-/i.test(ref)) d = checkinDetail_(ss.getSheetByName('Area Manager Check-ins'), ref, "Dario's Check-in");
+    else if (/^KC-/i.test(ref)) d = checkinDetail_(ss.getSheetByName('Krystal Check-ins'), ref, "Krystal's Check-in");
+    else if (/^OD-/i.test(ref)) d = officeDetail_(ss.getSheetByName('Office Documents'), ref);
+    else d = merDetail_(ss.getSheetByName('Responses'), ref);
+    if (!d) return json({ status: 'error', message: 'Could not find report ' + ref + '.' });
+    return json({ status: 'success', detail: d });
+  } catch (err) {
+    logError_(err);
+    return json({ status: 'error', message: 'Could not open that report. Try again.' });
+  }
+}
+
+function checkinDetail_(sh, ref, title) {
+  var r = findRowByRef_(sh, ref);
+  if (!r) return null;
+  var rows = [];
+  try { detailRows_(JSON.parse(String(r[5] || '{}')), rows, 0, ''); } catch (e) {}
+  return { ref: String(r[0]), title: title + ' — ' + String(r[2] || ''), by: String(r[3] || ''),
+    at: fmtCellDate_(r[1]), status: 'Submitted', summary: String(r[4] || ''), rows: rows };
+}
+
+function officeDetail_(sh, ref) {
+  var r = findRowByRef_(sh, ref);
+  if (!r) return null;
+  var rows = [
+    { label: 'Document type', value: String(r[3] || ''), sub: 0, head: false },
+    { label: 'Location', value: String(r[4] || ''), sub: 0, head: false },
+    { label: 'Period', value: String(r[5] || ''), sub: 0, head: false },
+    { label: 'Files', value: String(r[6] || ''), sub: 0, head: false },
+    { label: 'Filed to', value: String(r[7] || ''), sub: 0, head: false }
+  ].filter(function (x) { return x.value; });
+  return { ref: String(r[0]), title: 'Office Document', by: String(r[2] || ''),
+    at: fmtCellDate_(r[1]), status: String(r[8] || 'FILED'),
+    summary: String(r[3] || '') + ' · ' + String(r[5] || ''), rows: rows };
+}
+
+function merDetail_(sh, ref) {
+  var r = findRowByRef_(sh, ref);
+  if (!r) return null;
+  var head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  var jIdx = head.indexOf('Full Data (JSON)');
+  var sIdx = head.indexOf('Review Status');
+  var rows = [];
+  try { if (jIdx !== -1) detailRows_(JSON.parse(String(r[jIdx] || '{}')), rows, 0, ''); } catch (e) {}
+  if (!rows.length) {
+    // JSON missing or truncated — fall back to the row's summary columns.
+    rows = [
+      { label: 'Manager', value: String(r[2] || ''), sub: 0, head: false },
+      { label: 'Location', value: String(r[3] || ''), sub: 0, head: false },
+      { label: 'Week', value: String(r[4] || '') + ' to ' + String(r[5] || ''), sub: 0, head: false },
+      { label: 'Sales to date', value: String(r[7] || ''), sub: 0, head: false },
+      { label: 'Sales goal', value: String(r[8] || ''), sub: 0, head: false },
+      { label: 'Marketing total', value: String(r[9] || ''), sub: 0, head: false },
+      { label: 'Expense total', value: String(r[10] || ''), sub: 0, head: false }
+    ].filter(function (x) { return x.value && x.value !== ' to '; });
+  }
+  return { ref: String(r[0]), title: 'Weekly MER — ' + String(r[3] || ''), by: String(r[2] || ''),
+    at: fmtCellDate_(r[1]),
+    status: sIdx !== -1 ? (String(r[sIdx] || '') || 'PENDING REVIEW') : 'PENDING REVIEW',
+    summary: 'Week ' + String(r[4] || '') + ' to ' + String(r[5] || ''), rows: rows };
 }
 
 /** Spreadsheet menu: review helpers for admins. */
