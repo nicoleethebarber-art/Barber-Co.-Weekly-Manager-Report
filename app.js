@@ -1074,11 +1074,15 @@
   function showChooser() {
     form.style.display = "none";
     $("#officeCard").style.display = "none";
+    $("#areaCard").style.display = "none";
     $("#chooserCard").style.display = "";
+    var isDario = session && /^dario\b/i.test(String(session.name || "").trim());
+    $("#chooseArea").style.display = isDario ? "" : "none";
     if (!showChooser.__init) {
       showChooser.__init = true;
       $("#chooseReport").addEventListener("click", showReportForm);
       $("#chooseOffice").addEventListener("click", showOffice);
+      $("#chooseArea").addEventListener("click", showArea);
     }
   }
 
@@ -1086,6 +1090,7 @@
   function showReportForm() {
     $("#chooserCard").style.display = "none";
     $("#officeCard").style.display = "none";
+    $("#areaCard").style.display = "none";
     form.style.display = "";
     if (!formStarted) { formStarted = true; startForm(); }
   }
@@ -1097,9 +1102,242 @@
   var OFFICE_ACCEPTED_EXT = ["pdf", "jpg", "jpeg", "png", "heic", "xlsx", "xls", "csv"];
   var odUploads = [];
 
+  // =========================================================================
+  // AREA MANAGER CHECK-IN (Dario) — Tuesday Check and Friday Sales Check
+  // =========================================================================
+  var AREA_SHOPS = ["Edgewater", "Pinecrest", "Studio"];
+  var areaMode = "";
+
+  function showArea() {
+    $("#chooserCard").style.display = "none";
+    form.style.display = "none";
+    $("#officeCard").style.display = "none";
+    $("#areaCard").style.display = "";
+    initArea();
+  }
+
+  function segHtml(key, options) {
+    // options: [["All good","ok"], ["Issue found","no"], ...]
+    var cols = options.length;
+    var html = '<div class="status-opts seg" data-seg="' + key + '" style="grid-template-columns:repeat(' + cols + ',1fr)">';
+    options.forEach(function (o) {
+      html += '<label data-val="' + escapeHtml(o[0]) + '" data-tone="' + o[1] + '">' + escapeHtml(o[0]) + "</label>";
+    });
+    return html + "</div>";
+  }
+
+  function segValue(root, key) {
+    var seg = root.querySelector('[data-seg="' + key + '"]');
+    return (seg && seg.dataset.val) || "";
+  }
+
+  function buildAreaForms() {
+    var tue = "";
+    AREA_SHOPS.forEach(function (shop) {
+      tue += '<div class="group" data-shop="' + shop + '"><h3>' + shop + "</h3>" +
+        '<div class="seg-label">MER reviewed *</div>' + segHtml("mer_" + shop, [["All good", "ok"], ["Issue found", "no"]]) +
+        '<div class="seg-label">Tuesday report reviewed *</div>' + segHtml("report_" + shop, [["All good", "ok"], ["Issue found", "no"]]) +
+        '<div class="seg-label">Squire duplicates *</div>' + segHtml("dup_" + shop, [["Merged", "ok"], ["None found", "na"]]) +
+        '<div class="field area-notes" data-notes="' + shop + '" style="display:none;margin-top:10px"><label>Notes (required for issues) *</label>' +
+        '<textarea data-notesbox="' + shop + '" placeholder="What did you find at ' + shop + '?"></textarea></div></div>';
+    });
+    tue += '<div class="group"><h3>Once this week</h3>' +
+      '<div class="seg-label">Careers form replies *</div>' + segHtml("careers", [["Done", "ok"], ["None this week", "na"]]) +
+      '<div class="seg-label">Training paperwork printed *</div>' + segHtml("training", [["Yes", "ok"], ["Need to reprint", "no"]]) +
+      '<div class="seg-label">Holiday campaigns scheduled *</div>' + segHtml("campaigns", [["Yes", "ok"], ["No holiday coming", "na"], ["Not yet", "no"]]) +
+      '<div class="field" style="margin-top:10px"><label>Anything Nicole needs to know? <span class="opt">(optional)</span></label>' +
+      '<textarea id="areaForNicole"></textarea></div></div>';
+    $("#areaTueForm").innerHTML = tue;
+
+    var fri = "";
+    AREA_SHOPS.forEach(function (shop) {
+      fri += '<div class="group" data-fshop="' + shop + '"><h3>' + shop + ' <span class="pct-tag" data-tag="' + shop + '"></span></h3>' +
+        '<div class="two-col"><div class="field"><label>Sales so far ($) *</label>' +
+        '<input type="text" inputmode="decimal" data-sales="' + shop + '" placeholder="0.00"></div>' +
+        '<div class="field"><label>Weekly goal ($) *</label>' +
+        '<input type="text" inputmode="decimal" data-goal="' + shop + '" placeholder="0.00"></div></div>' +
+        '<div class="hint" data-pct="' + shop + '">Enter sales and goal to see % vs goal.</div>' +
+        '<div data-behindwrap="' + shop + '" style="display:none;margin-top:10px">' +
+        '<div class="seg-label">Campaign sent? *</div>' + segHtml("camp_" + shop, [["Yes", "ok"], ["No", "no"]]) +
+        '<div class="field" data-whywrap="' + shop + '" style="display:none;margin-top:8px"><label>Why not? *</label>' +
+        '<textarea data-why="' + shop + '"></textarea></div></div></div>';
+    });
+    $("#areaFriForm").innerHTML = fri;
+  }
+
+  function areaTueRefresh() {
+    // show/require notes per shop when an issue is picked
+    AREA_SHOPS.forEach(function (shop) {
+      var root = $("#areaTueForm");
+      var issue = segValue(root, "mer_" + shop) === "Issue found" || segValue(root, "report_" + shop) === "Issue found";
+      var wrap = root.querySelector('[data-notes="' + shop + '"]');
+      if (wrap) wrap.style.display = issue ? "" : "none";
+    });
+  }
+
+  function areaFriRefresh(shop) {
+    var root = $("#areaFriForm");
+    var sales = parseFloat(String(root.querySelector('[data-sales="' + shop + '"]').value).replace(/[^0-9.\-]/g, ""));
+    var goal = parseFloat(String(root.querySelector('[data-goal="' + shop + '"]').value).replace(/[^0-9.\-]/g, ""));
+    var pctEl = root.querySelector('[data-pct="' + shop + '"]');
+    var tagEl = root.querySelector('[data-tag="' + shop + '"]');
+    var wrap = root.querySelector('[data-behindwrap="' + shop + '"]');
+    if (!(goal > 0) || isNaN(sales)) {
+      pctEl.textContent = "Enter sales and goal to see % vs goal.";
+      tagEl.innerHTML = ""; wrap.style.display = "none"; return;
+    }
+    var pct = (sales / goal - 1) * 100;
+    var rounded = Math.round(pct * 10) / 10;
+    var behind = pct <= -3;
+    pctEl.textContent = (rounded >= 0 ? "+" : "") + rounded + "% vs goal";
+    tagEl.innerHTML = behind ? '<span class="behind-tag">BEHIND</span>' : '<span class="ontrack-tag">On pace</span>';
+    wrap.style.display = behind ? "" : "none";
+  }
+
+  function areaSetMode(mode) {
+    areaMode = mode;
+    $("#areaTabTue").classList.toggle("on", mode === "tuesday");
+    $("#areaTabFri").classList.toggle("on", mode === "friday");
+    $("#areaTueForm").style.display = mode === "tuesday" ? "" : "none";
+    $("#areaFriForm").style.display = mode === "friday" ? "" : "none";
+    $("#areaSubmit").style.display = mode ? "" : "none";
+    $("#areaError").style.display = "none";
+  }
+
+  function areaFail(msg) {
+    var e = $("#areaError");
+    e.textContent = msg; e.style.display = "block";
+    e.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function initArea() {
+    if (initArea.__init) return;
+    initArea.__init = true;
+    buildAreaForms();
+    $("#areaCard").addEventListener("click", function (e) {
+      var lab = e.target.closest(".seg label");
+      if (!lab) return;
+      var seg = lab.parentElement;
+      seg.dataset.val = lab.dataset.val;
+      Array.prototype.slice.call(seg.children).forEach(function (l) { l.classList.remove("sel-ok", "sel-no", "sel-na"); });
+      lab.classList.add("sel-" + lab.dataset.tone);
+      if (seg.dataset.seg.indexOf("mer_") === 0 || seg.dataset.seg.indexOf("report_") === 0) areaTueRefresh();
+      if (seg.dataset.seg.indexOf("camp_") === 0) {
+        var shop = seg.dataset.seg.slice(5);
+        var why = $("#areaFriForm").querySelector('[data-whywrap="' + shop + '"]');
+        if (why) why.style.display = seg.dataset.val === "No" ? "" : "none";
+      }
+    });
+    $("#areaFriForm").addEventListener("input", function (e) {
+      var shop = e.target.getAttribute("data-sales") || e.target.getAttribute("data-goal");
+      if (shop) areaFriRefresh(shop);
+    });
+    $("#areaTabTue").addEventListener("click", function () { areaSetMode("tuesday"); });
+    $("#areaTabFri").addEventListener("click", function () { areaSetMode("friday"); });
+    $("#areaBack").addEventListener("click", showChooser);
+    $("#areaSubmit").addEventListener("click", areaSubmit);
+  }
+
+  function areaCollect() {
+    var shops = {};
+    if (areaMode === "tuesday") {
+      var root = $("#areaTueForm");
+      AREA_SHOPS.forEach(function (shop) {
+        shops[shop] = {
+          mer: segValue(root, "mer_" + shop),
+          report: segValue(root, "report_" + shop),
+          duplicates: segValue(root, "dup_" + shop),
+          notes: root.querySelector('[data-notesbox="' + shop + '"]').value.trim()
+        };
+      });
+      return {
+        checkType: "tuesday", shops: shops,
+        careers: segValue(root, "careers"), training: segValue(root, "training"),
+        campaigns: segValue(root, "campaigns"), forNicole: $("#areaForNicole").value.trim()
+      };
+    }
+    var froot = $("#areaFriForm");
+    AREA_SHOPS.forEach(function (shop) {
+      shops[shop] = {
+        sales: froot.querySelector('[data-sales="' + shop + '"]').value,
+        goal: froot.querySelector('[data-goal="' + shop + '"]').value,
+        campaign: segValue(froot, "camp_" + shop),
+        campaignWhy: froot.querySelector('[data-why="' + shop + '"]').value.trim()
+      };
+    });
+    return { checkType: "friday", shops: shops };
+  }
+
+  function areaValidate(d) {
+    var p = [];
+    if (d.checkType === "tuesday") {
+      AREA_SHOPS.forEach(function (shop) {
+        var s = d.shops[shop];
+        if (!s.mer) p.push(shop + ": pick an answer for MER reviewed.");
+        if (!s.report) p.push(shop + ": pick an answer for Tuesday report.");
+        if (!s.duplicates) p.push(shop + ": pick an answer for Squire duplicates.");
+        if ((s.mer === "Issue found" || s.report === "Issue found") && !s.notes) p.push(shop + ": notes are required when an issue is found.");
+      });
+      if (!d.careers) p.push("Pick an answer for Careers form replies.");
+      if (!d.training) p.push("Pick an answer for Training paperwork.");
+      if (!d.campaigns) p.push("Pick an answer for Holiday campaigns.");
+    } else {
+      AREA_SHOPS.forEach(function (shop) {
+        var s = d.shops[shop];
+        var sales = parseFloat(String(s.sales).replace(/[^0-9.\-]/g, ""));
+        var goal = parseFloat(String(s.goal).replace(/[^0-9.\-]/g, ""));
+        if (isNaN(sales)) p.push(shop + ": enter sales so far.");
+        if (!(goal > 0)) p.push(shop + ": enter the weekly goal.");
+        if (goal > 0 && !isNaN(sales) && sales / goal - 1 <= -0.03) {
+          if (!s.campaign) p.push(shop + " is behind — answer \"Campaign sent?\".");
+          if (s.campaign === "No" && !s.campaignWhy) p.push(shop + ": say why no campaign was sent.");
+        }
+      });
+    }
+    return p;
+  }
+
+  function areaSubmit() {
+    var btn = $("#areaSubmit"), ok = $("#areaSuccess");
+    $("#areaError").style.display = "none"; ok.style.display = "none";
+    if (!areaMode) { areaFail("Pick Tuesday Check or Friday Sales first."); return; }
+    var d = areaCollect();
+    var problems = areaValidate(d);
+    if (problems.length) { areaFail(problems.join(" ")); return; }
+    btn.disabled = true; btn.textContent = "Submitting…";
+    d.action = "areacheck";
+    d.token = session && session.token;
+    d.submissionId = uuid();
+    fetch(ENDPOINT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(d)
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        btn.disabled = false; btn.textContent = "Submit Check-in";
+        if (res && res.status === "success") {
+          ok.innerHTML = "✅ <strong>Check-in submitted!</strong> Nicole has been emailed.<br>Reference: " + escapeHtml(res.ref || "");
+          ok.style.display = "";
+          ok.scrollIntoView({ behavior: "smooth", block: "center" });
+        } else if (res && /access code|session has expired/i.test(res.message || "")) {
+          clearSession(); session = null;
+          $("#areaCard").style.display = "none";
+          showGate();
+        } else {
+          areaFail((res && res.message) || "The server could not save the check-in. Please try again.");
+        }
+      })
+      .catch(function () {
+        btn.disabled = false; btn.textContent = "Submit Check-in";
+        areaFail("Couldn't reach the server. Check your connection and try again.");
+      });
+  }
+
   function showOffice() {
     $("#chooserCard").style.display = "none";
     form.style.display = "none";
+    $("#areaCard").style.display = "none";
     $("#officeCard").style.display = "";
     initOffice();
   }
