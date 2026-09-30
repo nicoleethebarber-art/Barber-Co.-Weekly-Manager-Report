@@ -1075,14 +1075,21 @@
     form.style.display = "none";
     $("#officeCard").style.display = "none";
     $("#areaCard").style.display = "none";
+    $("#dashCard").style.display = "none";
+    $("#kCard").style.display = "none";
     $("#chooserCard").style.display = "";
-    var isDario = session && /^dario\b/i.test(String(session.name || "").trim());
-    $("#chooseArea").style.display = isDario ? "" : "none";
+    var nm = String((session && session.name) || "").trim();
+    var isDario = /^dario\b/i.test(nm), isKrystal = /^krystal\b/i.test(nm), isNicole = /^nicole\b/i.test(nm);
+    $("#chooseArea").style.display = (isDario || isNicole) ? "" : "none";
+    $("#chooseK").style.display = (isKrystal || isNicole) ? "" : "none";
+    $("#chooseDash").style.display = isNicole ? "" : "none";
     if (!showChooser.__init) {
       showChooser.__init = true;
       $("#chooseReport").addEventListener("click", showReportForm);
       $("#chooseOffice").addEventListener("click", showOffice);
       $("#chooseArea").addEventListener("click", showArea);
+      $("#chooseK").addEventListener("click", showK);
+      $("#chooseDash").addEventListener("click", showDash);
     }
   }
 
@@ -1091,6 +1098,8 @@
     $("#chooserCard").style.display = "none";
     $("#officeCard").style.display = "none";
     $("#areaCard").style.display = "none";
+    $("#dashCard").style.display = "none";
+    $("#kCard").style.display = "none";
     form.style.display = "";
     if (!formStarted) { formStarted = true; startForm(); }
   }
@@ -1112,6 +1121,8 @@
     $("#chooserCard").style.display = "none";
     form.style.display = "none";
     $("#officeCard").style.display = "none";
+    $("#dashCard").style.display = "none";
+    $("#kCard").style.display = "none";
     $("#areaCard").style.display = "";
     initArea();
   }
@@ -1146,6 +1157,7 @@
       '<div class="seg-label">Careers form replies *</div>' + segHtml("careers", [["Done", "ok"], ["None this week", "na"]]) +
       '<div class="seg-label">Training paperwork printed *</div>' + segHtml("training", [["Yes", "ok"], ["Need to reprint", "no"]]) +
       '<div class="seg-label">Holiday campaigns scheduled *</div>' + segHtml("campaigns", [["Yes", "ok"], ["No holiday coming", "na"], ["Not yet", "no"]]) +
+      '<div class="seg-label">Payroll — new contractors / staff changes added *</div>' + segHtml("payroll", [["Updated", "ok"], ["No changes this week", "na"]]) +
       '<div class="field" style="margin-top:10px"><label>Anything Nicole needs to know? <span class="opt">(optional)</span></label>' +
       '<textarea id="areaForNicole"></textarea></div></div>';
     $("#areaTueForm").innerHTML = tue;
@@ -1253,7 +1265,8 @@
         checkType: "tuesday", shops: shops,
         duplicates: $("#areaDups").value,
         careers: segValue(root, "careers"), training: segValue(root, "training"),
-        campaigns: segValue(root, "campaigns"), forNicole: $("#areaForNicole").value.trim()
+        campaigns: segValue(root, "campaigns"), payroll: segValue(root, "payroll"),
+        forNicole: $("#areaForNicole").value.trim()
       };
     }
     var froot = $("#areaFriForm");
@@ -1281,6 +1294,7 @@
       if (!d.careers) p.push("Pick an answer for Careers form replies.");
       if (!d.training) p.push("Pick an answer for Training paperwork.");
       if (!d.campaigns) p.push("Pick an answer for Holiday campaigns.");
+      if (!d.payroll) p.push("Pick an answer for Payroll (new contractors / staff changes).");
     } else {
       AREA_SHOPS.forEach(function (shop) {
         var s = d.shops[shop];
@@ -1334,10 +1348,339 @@
       });
   }
 
+  // =========================================================================
+  // KRYSTAL'S CHECK-IN — payroll, Tuesday duties, sales vs last week, card
+  // =========================================================================
+  var kMode = "";
+
+  function showK() {
+    $("#chooserCard").style.display = "none";
+    form.style.display = "none";
+    $("#officeCard").style.display = "none";
+    $("#areaCard").style.display = "none";
+    $("#dashCard").style.display = "none";
+    $("#kCard").style.display = "";
+    initK();
+  }
+
+  function kWeekOfMonth() { return Math.ceil(new Date().getDate() / 7); }
+
+  function buildKForms() {
+    $("#kPayrollForm").innerHTML =
+      '<div class="group"><h3>Payroll review (hours, commissions, tips)</h3>' +
+      segHtml("k_payroll", [["All good", "ok"], ["Discrepancies found", "no"]]) +
+      '<div class="field" id="kPayNotesWrap" style="display:none;margin-top:10px"><label>What discrepancies? *</label><textarea id="kPayNotes"></textarea>' +
+      '<div class="seg-label">Resolved? *</div>' + segHtml("k_resolved", [["Resolved", "ok"], ["Still working on it", "no"]]) + "</div>" +
+      '<div class="seg-label">"Bank &amp; Checks" file emailed to Attaf *</div>' + segHtml("k_attaf", [["Sent", "ok"], ["Not yet", "no"]]) +
+      '<div class="field" id="kAttafWhyWrap" style="display:none;margin-top:8px"><label>Why not yet? *</label><textarea id="kAttafWhy"></textarea></div></div>';
+
+    var wk = kWeekOfMonth();
+    var monthly = "";
+    if (wk === 1) {
+      monthly = '<div class="group"><h3>Monthly — Week 1</h3>' +
+        '<div class="seg-label">Employee paperwork organized *</div>' + segHtml("k_paperwork", [["Organized", "ok"], ["Needs work", "no"]]) +
+        '<p class="hint">Also do the 💳 Card Expense Check tab this week.</p></div>';
+    } else if (wk === 2) {
+      monthly = '<div class="group"><h3>Monthly — Week 2: Inventory</h3>' +
+        '<div class="seg-label">Inventory counted *</div>' + segHtml("k_inventory", [["Done", "ok"], ["Not yet", "no"]]) +
+        '<div class="field" style="margin-top:8px"><label>What\u2019s running low? *</label><textarea id="kLowItems" placeholder="Write \u201cnothing low\u201d if fully stocked"></textarea></div></div>';
+    } else if (wk === 3) {
+      monthly = '<div class="group"><h3>Monthly — Week 3: Place the order</h3>' +
+        '<div class="seg-label">Order placed (email list + low items) *</div>' + segHtml("k_order", [["Done", "ok"], ["Not yet", "no"]]) +
+        '<div class="field" id="kOrderNotesWrap" style="display:none;margin-top:8px"><label>Why not yet? *</label><textarea id="kOrderNotes"></textarea></div></div>';
+    } else if (wk === 4) {
+      monthly = '<div class="group"><h3>Monthly — Week 4: Follow-up</h3>' +
+        '<div class="seg-label">Order delivery *</div>' + segHtml("k_delivery", [["All delivered", "ok"], ["Missing items", "no"]]) +
+        '<div class="field" id="kDeliveryNotesWrap" style="display:none;margin-top:8px"><label>What\u2019s missing? *</label><textarea id="kDeliveryNotes"></textarea></div>' +
+        '<div class="seg-label">Monthly performance report *</div>' + segHtml("k_perf", [["Done", "ok"], ["Not yet", "no"]]) + "</div>";
+    } else {
+      monthly = '<div class="group"><h3>Monthly</h3><p class="hint">Week 5 — no monthly items this week.</p></div>';
+    }
+    $("#kTueForm").innerHTML =
+      '<p class="hint" style="margin:4px 0 10px">Week ' + wk + " of the month</p>" +
+      '<div class="group"><h3>Weekly</h3>' +
+      '<div class="seg-label">New hires in the "Bank &amp; Checks" file *</div>' + segHtml("k_hires", [["All in the file", "ok"], ["Missing - told Dario", "no"]]) +
+      '<div class="field" id="kHiresNotesWrap" style="display:none;margin-top:8px"><label>Who / what is missing? *</label><textarea id="kHiresNotes"></textarea></div>' +
+      '<div class="seg-label">Google reviews (all 3 shops) *</div>' + segHtml("k_reviews", [["Done all 3 shops", "ok"], ["Not yet", "no"]]) + "</div>" +
+      monthly +
+      '<div class="field"><label>Anything Nicole needs to know? <span class="opt">(optional)</span></label><textarea id="kForNicole"></textarea></div>';
+
+    var sales = "";
+    AREA_SHOPS.forEach(function (shop) {
+      sales += '<div class="group"><h3>' + shop + ' <span data-ktag="' + shop + '"></span></h3>' +
+        '<div class="two-col"><div class="field"><label>This week ($) *</label><input type="text" inputmode="decimal" data-kthis="' + shop + '" placeholder="0.00"></div>' +
+        '<div class="field"><label>Last week ($) *</label><input type="text" inputmode="decimal" data-klast="' + shop + '" placeholder="0.00"></div></div>' +
+        '<div class="hint" data-kpct="' + shop + '">Enter both weeks to compare.</div>' +
+        '<div data-kdownwrap="' + shop + '" style="display:none;margin-top:10px">' +
+        '<div class="seg-label">Engage campaign sent? *</div>' + segHtml("kcamp_" + shop, [["Campaign sent", "ok"], ["No campaign", "no"]]) +
+        '<div data-kchatwrap="' + shop + '" style="display:none;margin-top:8px">' +
+        '<div class="seg-label">Posted in managers chat? *</div>' + segHtml("kchat_" + shop, [["Posted in chat", "ok"], ["Not posted yet", "no"]]) +
+        "</div></div></div>";
+    });
+    $("#kSalesForm").innerHTML = sales;
+
+    var cardHtml = "";
+    AREA_SHOPS.forEach(function (shop) {
+      cardHtml += '<div class="group"><h3>' + shop + "</h3>" +
+        '<div class="seg-label">Chase card share *</div>' + segHtml("kshare_" + shop, [["Paid - matches", "ok"], ["Mismatch", "no"]]) +
+        '<div class="field" data-ksharewrap="' + shop + '" style="display:none;margin-top:8px"><label>Describe the mismatch *</label><textarea data-kshare-notes="' + shop + '"></textarea></div></div>';
+    });
+    $("#kCardForm").innerHTML = '<p class="hint" style="margin:4px 0 10px">Split shared purchases and confirm each shop paid its share to the Chase card.</p>' + cardHtml;
+  }
+
+  function kSalesRefresh(shop) {
+    var root = $("#kSalesForm");
+    var t = parseFloat(String(root.querySelector('[data-kthis="' + shop + '"]').value).replace(/[^0-9.\-]/g, ""));
+    var l = parseFloat(String(root.querySelector('[data-klast="' + shop + '"]').value).replace(/[^0-9.\-]/g, ""));
+    var pctEl = root.querySelector('[data-kpct="' + shop + '"]');
+    var tagEl = root.querySelector('[data-ktag="' + shop + '"]');
+    var wrap = root.querySelector('[data-kdownwrap="' + shop + '"]');
+    if (!(l > 0) || isNaN(t)) { pctEl.textContent = "Enter both weeks to compare."; tagEl.innerHTML = ""; wrap.style.display = "none"; return; }
+    var pct = Math.round((t / l - 1) * 1000) / 10;
+    var down = t < l;
+    pctEl.textContent = (pct >= 0 ? "+" : "") + pct + "% vs last week";
+    tagEl.innerHTML = down ? '<span class="behind-tag">DOWN</span>' : '<span class="ontrack-tag">Up</span>';
+    wrap.style.display = down ? "" : "none";
+  }
+
+  function kSetMode(mode) {
+    kMode = mode;
+    [["payroll", "#kTabPayroll", "#kPayrollForm"], ["tuesday", "#kTabTue", "#kTueForm"],
+     ["sales", "#kTabSales", "#kSalesForm"], ["cardexpense", "#kTabCard", "#kCardForm"]].forEach(function (t) {
+      $(t[1]).classList.toggle("on", mode === t[0]);
+      $(t[2]).style.display = mode === t[0] ? "" : "none";
+    });
+    $("#kSubmit").style.display = mode ? "" : "none";
+    $("#kError").style.display = "none";
+  }
+
+  function kFail(msg) {
+    var e = $("#kError");
+    e.textContent = msg; e.style.display = "block";
+    e.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function initK() {
+    if (initK.__init) return;
+    initK.__init = true;
+    buildKForms();
+    $("#kCard").addEventListener("click", function (e) {
+      var lab = e.target.closest(".seg label");
+      if (!lab) return;
+      var seg = lab.parentElement;
+      seg.dataset.val = lab.dataset.val;
+      Array.prototype.slice.call(seg.children).forEach(function (l) { l.classList.remove("sel-ok", "sel-no", "sel-na"); });
+      lab.classList.add("sel-" + lab.dataset.tone);
+      var k = seg.dataset.seg, v = seg.dataset.val;
+      if (k === "k_payroll") $("#kPayNotesWrap").style.display = v === "Discrepancies found" ? "" : "none";
+      if (k === "k_attaf") $("#kAttafWhyWrap").style.display = v === "Not yet" ? "" : "none";
+      if (k === "k_hires") $("#kHiresNotesWrap").style.display = v === "Missing - told Dario" ? "" : "none";
+      if (k === "k_order") { var w = $("#kOrderNotesWrap"); if (w) w.style.display = v === "Not yet" ? "" : "none"; }
+      if (k === "k_delivery") { var w2 = $("#kDeliveryNotesWrap"); if (w2) w2.style.display = v === "Missing items" ? "" : "none"; }
+      if (k.indexOf("kcamp_") === 0) {
+        var shop = k.slice(6);
+        $("#kSalesForm").querySelector('[data-kchatwrap="' + shop + '"]').style.display = v === "No campaign" ? "" : "none";
+      }
+      if (k.indexOf("kshare_") === 0) {
+        var shop2 = k.slice(7);
+        $("#kCardForm").querySelector('[data-ksharewrap="' + shop2 + '"]').style.display = v === "Mismatch" ? "" : "none";
+      }
+    });
+    $("#kSalesForm").addEventListener("input", function (e) {
+      var shop = e.target.getAttribute("data-kthis") || e.target.getAttribute("data-klast");
+      if (shop) kSalesRefresh(shop);
+    });
+    $("#kTabPayroll").addEventListener("click", function () { kSetMode("payroll"); });
+    $("#kTabTue").addEventListener("click", function () { kSetMode("tuesday"); });
+    $("#kTabSales").addEventListener("click", function () { kSetMode("sales"); });
+    $("#kTabCard").addEventListener("click", function () { kSetMode("cardexpense"); });
+    $("#kBack").addEventListener("click", showChooser);
+    $("#kSubmit").addEventListener("click", kSubmitForm);
+  }
+
+  function kCollect() {
+    var d = { checkType: kMode };
+    if (kMode === "payroll") {
+      var r = $("#kPayrollForm");
+      d.payroll = segValue(r, "k_payroll"); d.notes = $("#kPayNotes").value.trim();
+      d.resolved = segValue(r, "k_resolved"); d.attaf = segValue(r, "k_attaf"); d.attafWhy = $("#kAttafWhy").value.trim();
+    } else if (kMode === "tuesday") {
+      var t = $("#kTueForm");
+      d.hires = segValue(t, "k_hires"); d.hiresNotes = $("#kHiresNotes").value.trim();
+      d.reviews = segValue(t, "k_reviews"); d.forNicole = $("#kForNicole").value.trim();
+      d.paperwork = segValue(t, "k_paperwork"); d.inventory = segValue(t, "k_inventory");
+      d.lowItems = ($("#kLowItems") || { value: "" }).value.trim();
+      d.order = segValue(t, "k_order"); d.orderNotes = ($("#kOrderNotes") || { value: "" }).value.trim();
+      d.delivery = segValue(t, "k_delivery"); d.deliveryNotes = ($("#kDeliveryNotes") || { value: "" }).value.trim();
+      d.perfReport = segValue(t, "k_perf");
+    } else if (kMode === "sales") {
+      var sroot = $("#kSalesForm"); d.shops = {};
+      AREA_SHOPS.forEach(function (shop) {
+        d.shops[shop] = {
+          thisWeek: sroot.querySelector('[data-kthis="' + shop + '"]').value,
+          lastWeek: sroot.querySelector('[data-klast="' + shop + '"]').value,
+          campaign: segValue(sroot, "kcamp_" + shop), chat: segValue(sroot, "kchat_" + shop)
+        };
+      });
+    } else {
+      var croot = $("#kCardForm"); d.shops = {};
+      AREA_SHOPS.forEach(function (shop) {
+        d.shops[shop] = { share: segValue(croot, "kshare_" + shop), notes: croot.querySelector('[data-kshare-notes="' + shop + '"]').value.trim() };
+      });
+    }
+    return d;
+  }
+
+  function kValidate(d) {
+    var p = [];
+    var money = function (v) { return parseFloat(String(v).replace(/[^0-9.\-]/g, "")); };
+    if (d.checkType === "payroll") {
+      if (!d.payroll) p.push("Pick an answer for the payroll review.");
+      if (d.payroll === "Discrepancies found") {
+        if (!d.notes) p.push("Describe the discrepancies you found.");
+        if (!d.resolved) p.push("Say whether the discrepancies are resolved.");
+      }
+      if (!d.attaf) p.push("Pick an answer for the Bank & Checks file to Attaf.");
+      if (d.attaf === "Not yet" && !d.attafWhy) p.push("Say why the file wasn't sent to Attaf yet.");
+    } else if (d.checkType === "tuesday") {
+      if (!d.hires) p.push("Pick an answer for new hires in the Bank & Checks file.");
+      if (d.hires === "Missing - told Dario" && !d.hiresNotes) p.push("Say who or what is missing.");
+      if (!d.reviews) p.push("Pick an answer for Google reviews.");
+      var wk = kWeekOfMonth();
+      if (wk === 1 && !d.paperwork) p.push("Pick an answer for employee paperwork.");
+      if (wk === 2) {
+        if (!d.inventory) p.push("Pick an answer for the inventory count.");
+        if (d.inventory === "Done" && !d.lowItems) p.push("List what's running low (or write \u201cnothing low\u201d).");
+      }
+      if (wk === 3) {
+        if (!d.order) p.push("Pick an answer for placing the order.");
+        if (d.order === "Not yet" && !d.orderNotes) p.push("Say why the order wasn't placed yet.");
+      }
+      if (wk === 4) {
+        if (!d.delivery) p.push("Pick an answer for the order delivery.");
+        if (d.delivery === "Missing items" && !d.deliveryNotes) p.push("Say what's missing from the delivery.");
+        if (!d.perfReport) p.push("Pick an answer for the monthly performance report.");
+      }
+    } else if (d.checkType === "sales") {
+      AREA_SHOPS.forEach(function (shop) {
+        var sd = d.shops[shop];
+        var t = money(sd.thisWeek), l = money(sd.lastWeek);
+        if (isNaN(t)) p.push(shop + ": enter this week's sales.");
+        if (!(l > 0)) p.push(shop + ": enter last week's sales.");
+        if (l > 0 && !isNaN(t) && t < l) {
+          if (!sd.campaign) p.push(shop + " is down — say whether an Engage campaign was sent.");
+          if (sd.campaign === "No campaign" && !sd.chat) p.push(shop + ": post it in the managers chat and pick an answer.");
+        }
+      });
+    } else {
+      AREA_SHOPS.forEach(function (shop) {
+        var cd = d.shops[shop];
+        if (!cd.share) p.push(shop + ": say whether its Chase card share matches.");
+        if (cd.share === "Mismatch" && !cd.notes) p.push(shop + ": describe the mismatch.");
+      });
+    }
+    return p;
+  }
+
+  function kSubmitForm() {
+    var btn = $("#kSubmit"), ok = $("#kSuccess");
+    $("#kError").style.display = "none"; ok.style.display = "none";
+    if (!kMode) { kFail("Pick which check-in you're doing first."); return; }
+    var d = kCollect();
+    var problems = kValidate(d);
+    if (problems.length) { kFail(problems.join(" ")); return; }
+    d.action = "krystalcheck"; d.token = session && session.token; d.submissionId = uuid();
+    btn.disabled = true; btn.textContent = "Submitting…";
+    fetch(ENDPOINT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(d) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        btn.disabled = false; btn.textContent = "Submit Check-in";
+        if (res && res.status === "success") {
+          ok.innerHTML = "✅ <strong>Check-in submitted!</strong> Nicole has been emailed.<br>Reference: " + escapeHtml(res.ref || "");
+          ok.style.display = ""; ok.scrollIntoView({ behavior: "smooth", block: "center" });
+        } else if (res && /access code|session has expired/i.test(res.message || "")) {
+          clearSession(); session = null; $("#kCard").style.display = "none"; showGate();
+        } else {
+          kFail((res && res.message) || "The server could not save the check-in. Please try again.");
+        }
+      })
+      .catch(function () { btn.disabled = false; btn.textContent = "Submit Check-in"; kFail("Couldn't reach the server. Check your connection and try again."); });
+  }
+
+  // =========================================================================
+  // ADMIN DASHBOARD (Nicole) — read-only: what's done, what's missing
+  // =========================================================================
+  function showDash() {
+    $("#chooserCard").style.display = "none";
+    form.style.display = "none";
+    $("#officeCard").style.display = "none";
+    $("#areaCard").style.display = "none";
+    $("#kCard").style.display = "none";
+    $("#dashCard").style.display = "";
+    if (!showDash.__init) {
+      showDash.__init = true;
+      $("#dashBack").addEventListener("click", showChooser);
+      $("#dashRefresh").addEventListener("click", loadDash);
+    }
+    loadDash();
+  }
+
+  function dashRow(okFlag, label, detail) {
+    return '<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid var(--line)">' +
+      '<span>' + (okFlag ? "✅" : "❌") + "</span><div><b>" + label + "</b>" +
+      (detail ? '<div style="color:var(--muted);font-size:12.5px">' + detail + "</div>" : "") + "</div></div>";
+  }
+
+  function loadDash() {
+    var body = $("#dashBody");
+    body.innerHTML = '<p style="color:var(--muted);text-align:center">Loading…</p>';
+    fetch(ENDPOINT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "dashboard", token: session && session.token, submissionId: uuid() }) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res || res.status !== "success") {
+          if (res && /access code|session has expired/i.test(res.message || "")) { clearSession(); session = null; showGate(); return; }
+          body.innerHTML = '<p style="color:var(--warn)">' + escapeHtml((res && res.message) || "Couldn't load.") + "</p>"; return;
+        }
+        var d = res.dashboard, h = "";
+        h += '<div class="group"><h3>📋 Manager reports — last week</h3>';
+        AREA_SHOPS.forEach(function (shop) {
+          var r = d.reports.lastWeek[shop];
+          h += dashRow(!!r, shop, r ? escapeHtml(r.ref) + " · " + escapeHtml(r.status) : "No report for last week yet — chase it");
+        });
+        h += "</div>";
+        h += '<div class="group"><h3>⏳ Waiting on your approval (' + d.reports.pending.length + ")</h3>";
+        if (!d.reports.pending.length) h += '<p class="hint">Nothing pending. 🎉</p>';
+        d.reports.pending.forEach(function (p) {
+          h += dashRow(false, escapeHtml(p.ref), escapeHtml(p.manager + " · " + p.location + " · " + p.week) + " — approve from its email, or the sheet menu");
+        });
+        h += "</div>";
+        h += '<div class="group"><h3>🧭 Dario this week</h3>' +
+          dashRow(!!d.dario.tuesday, "Tuesday Check", d.dario.tuesday ? escapeHtml(d.dario.tuesday.summary) : "Not submitted yet") +
+          dashRow(!!d.dario.friday, "Friday Sales Check", d.dario.friday ? escapeHtml(d.dario.friday.summary) : "Not submitted yet") + "</div>";
+        h += '<div class="group"><h3>🗓️ Krystal this week</h3>' +
+          dashRow(!!d.krystal.payroll, "Payroll (Sun–Mon)", d.krystal.payroll ? escapeHtml(d.krystal.payroll.summary) : "Not submitted yet") +
+          dashRow(!!d.krystal.tuesday, "Tuesday duties", d.krystal.tuesday ? escapeHtml(d.krystal.tuesday.summary) : "Not submitted yet") +
+          dashRow(!!d.krystal.sales, "Weekly sales check", d.krystal.sales ? escapeHtml(d.krystal.sales.summary) : "Not submitted yet") +
+          (d.weekOfMonth === 1 ? dashRow(!!d.krystal.card, "Card expense check (week 1)", d.krystal.card ? escapeHtml(d.krystal.card.summary) : "Not submitted yet") : "") +
+          "</div>";
+        h += '<div class="group"><h3>🗂️ Office documents this week (' + d.office.length + ")</h3>";
+        if (!d.office.length) h += '<p class="hint">None filed yet this week.</p>';
+        d.office.forEach(function (o) {
+          h += dashRow(true, escapeHtml(o.type + (o.location && o.location !== "ALL" ? " · " + o.location : "")), escapeHtml(o.period + " · by " + o.by));
+        });
+        h += "</div>";
+        body.innerHTML = h;
+      })
+      .catch(function () { body.innerHTML = '<p style="color:var(--warn)">Couldn\u2019t reach the server. Tap Refresh to retry.</p>'; });
+  }
+
   function showOffice() {
     $("#chooserCard").style.display = "none";
     form.style.display = "none";
     $("#areaCard").style.display = "none";
+    $("#dashCard").style.display = "none";
+    $("#kCard").style.display = "none";
     $("#officeCard").style.display = "";
     initOffice();
   }
