@@ -1997,6 +1997,15 @@ function ensureKrystalSheet_() {
   return sh;
 }
 
+/** A sheet cell's timestamp as a Date — handles real Date cells and text. */
+function cellDate_(v) {
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+  var d = new Date(String(v).replace(' ', 'T'));
+  if (!isNaN(d.getTime())) return d;
+  d = new Date(String(v));
+  return isNaN(d.getTime()) ? null : d;
+}
+
 /** Which week of the month a date falls in (1-5). */
 function weekOfMonth_(d) { return Math.ceil(d.getDate() / 7); }
 
@@ -2170,8 +2179,8 @@ function handleDashboard_(data, mgr, isAdmin) {
         var ref = String(r[0] || ''); if (!ref) return;
         var loc = String(r[3] || ''), wkS = parseYmd_(String(r[4] || '')), status = String(r[col - 1] || '');
         if (/^PENDING/.test(status)) {
-          var subAt = new Date(String(r[1]).replace(' ', 'T'));
-          if (!isNaN(subAt.getTime()) && subAt >= monday) {
+          var subAt = cellDate_(r[1]);
+          if (subAt && subAt >= monday) {
             reports.pending.push({ ref: ref, manager: String(r[2] || ''), location: loc, week: String(r[4] || '') + ' to ' + String(r[5] || '') });
           }
         }
@@ -2192,8 +2201,8 @@ function handleDashboard_(data, mgr, isAdmin) {
       if (!sh || sh.getLastRow() < 2) return out;
       var rows = sh.getRange(2, 1, sh.getLastRow() - 1, 5).getValues();
       rows.forEach(function (r) {
-        var when = new Date(String(r[1]).replace(' ', 'T'));
-        if (!isNaN(when.getTime()) && when >= monday) out[String(r[2])] = { at: String(r[1]), summary: String(r[4] || '') };
+        var when = cellDate_(r[1]);
+        if (when && when >= monday) out[String(r[2])] = { at: String(r[1]), summary: String(r[4] || '') };
       });
       return out;
     }
@@ -2206,8 +2215,8 @@ function handleDashboard_(data, mgr, isAdmin) {
     if (osh && osh.getLastRow() > 1) {
       var orows = osh.getRange(2, 1, osh.getLastRow() - 1, 6).getValues();
       orows.forEach(function (r) {
-        var when = new Date(String(r[1]).replace(' ', 'T'));
-        if (!isNaN(when.getTime()) && when >= monday) office.push({ type: String(r[3] || ''), location: String(r[4] || ''), period: String(r[5] || ''), by: String(r[2] || '') });
+        var when = cellDate_(r[1]);
+        if (when && when >= monday) office.push({ type: String(r[3] || ''), location: String(r[4] || ''), period: String(r[5] || ''), by: String(r[2] || '') });
       });
     }
 
@@ -2320,8 +2329,8 @@ function menuDeleteOldUnapproved() {
   rows.forEach(function (r, i) {
     var status = String(r[col - 1] || '');
     if (/^(APPROVED|COMPLETED)/.test(status)) return; // approved reports are kept
-    var when = new Date(String(r[1]).replace(' ', 'T'));
-    if (!isNaN(when.getTime()) && when < monday) targets.push({ row: i + 2, ref: String(r[0] || '') });
+    var when = cellDate_(r[1]);
+    if (when && when < monday) targets.push({ row: i + 2, ref: String(r[0] || '') });
   });
   if (!targets.length) { ui.alert('Nothing to delete — no old unapproved reports.'); return; }
   var ok = ui.alert('Delete old unapproved reports',
