@@ -1158,6 +1158,8 @@
       '<div class="seg-label">Training paperwork printed *</div>' + segHtml("training", [["Yes", "ok"], ["Need to reprint", "no"]]) +
       '<div class="seg-label">Holiday campaigns scheduled *</div>' + segHtml("campaigns", [["Yes", "ok"], ["No holiday coming", "na"], ["Not yet", "no"]]) +
       '<div class="seg-label">Payroll — new contractors / staff changes added *</div>' + segHtml("payroll", [["Updated", "ok"], ["No changes this week", "na"]]) +
+      '<div class="seg-label">Monthly sit-down with Nicole *</div>' + segHtml("sitdown", [["Done this month", "ok"], ["Scheduled", "na"], ["Not yet", "no"]]) +
+      '<div class="field" style="margin-top:8px"><label>Improvement idea <span class="opt">(optional)</span></label><textarea id="areaIdea"></textarea></div>' +
       '<div class="field" style="margin-top:10px"><label>Anything Nicole needs to know? <span class="opt">(optional)</span></label>' +
       '<textarea id="areaForNicole"></textarea></div></div>';
     $("#areaTueForm").innerHTML = tue;
@@ -1266,6 +1268,7 @@
         duplicates: $("#areaDups").value,
         careers: segValue(root, "careers"), training: segValue(root, "training"),
         campaigns: segValue(root, "campaigns"), payroll: segValue(root, "payroll"),
+        sitdown: segValue(root, "sitdown"), idea: $("#areaIdea").value.trim(),
         forNicole: $("#areaForNicole").value.trim()
       };
     }
@@ -1295,6 +1298,7 @@
       if (!d.training) p.push("Pick an answer for Training paperwork.");
       if (!d.campaigns) p.push("Pick an answer for Holiday campaigns.");
       if (!d.payroll) p.push("Pick an answer for Payroll (new contractors / staff changes).");
+      if (!d.sitdown) p.push("Pick an answer for the monthly sit-down with Nicole.");
     } else {
       AREA_SHOPS.forEach(function (shop) {
         var s = d.shops[shop];
@@ -1375,40 +1379,10 @@
       '<div class="field" id="kAttafWhyWrap" style="display:none;margin-top:8px"><label>Why not yet? *</label><textarea id="kAttafWhy"></textarea></div></div>';
 
     var wk = kWeekOfMonth();
-    var monthly = "";
-    if (wk === 1) {
-      monthly = '<div class="group"><h3>Monthly — Week 1</h3>' +
-        '<div class="seg-label">Employee paperwork organized *</div>' + segHtml("k_paperwork", [["Organized", "ok"], ["Needs work", "no"]]) +
-        '<p class="hint">Also do the 💳 Card Expense Check tab this week.</p></div>';
-    } else if (wk === 2) {
-      monthly = '<div class="group"><h3>Monthly — Week 2: Inventory</h3>' +
-        '<div class="seg-label">Inventory counted *</div>' + segHtml("k_inventory", [["Done", "ok"], ["Not yet", "no"]]) +
-        '<div class="field" style="margin-top:8px"><label>What\u2019s running low? *</label><textarea id="kLowItems" placeholder="Write \u201cnothing low\u201d if fully stocked"></textarea></div></div>';
-    } else if (wk === 3) {
-      monthly = '<div class="group"><h3>Monthly — Week 3: Place the order</h3>' +
-        '<div class="seg-label">Order placed (email list + low items) *</div>' + segHtml("k_order", [["Done", "ok"], ["Not yet", "no"]]) +
-        '<div class="field" id="kOrderNotesWrap" style="display:none;margin-top:8px"><label>Why not yet? *</label><textarea id="kOrderNotes"></textarea></div></div>';
-    } else if (wk === 4) {
-      monthly = '<div class="group"><h3>Monthly — Week 4: Follow-up</h3>' +
-        '<div class="seg-label">Order delivery *</div>' + segHtml("k_delivery", [["All delivered", "ok"], ["Missing items", "no"]]) +
-        '<div class="field" id="kDeliveryNotesWrap" style="display:none;margin-top:8px"><label>What\u2019s missing? *</label><textarea id="kDeliveryNotes"></textarea></div>' +
-        '<div class="seg-label">Monthly performance report *</div>' + segHtml("k_perf", [["Done", "ok"], ["Not yet", "no"]]) + "</div>";
-    } else {
-      monthly = '<div class="group"><h3>Monthly</h3><p class="hint">Week 5 — no monthly items this week.</p></div>';
-    }
-    $("#kTueForm").innerHTML =
-      '<p class="hint" style="margin:4px 0 10px">Week ' + wk + " of the month</p>" +
-      '<div class="group"><h3>Weekly</h3>' +
-      '<div class="seg-label">New hires in the "Bank &amp; Checks" file *</div>' + segHtml("k_hires", [["All in the file", "ok"], ["Missing - told Dario", "no"]]) +
-      '<div class="field" id="kHiresNotesWrap" style="display:none;margin-top:8px"><label>Who / what is missing? *</label><textarea id="kHiresNotes"></textarea></div>' +
-      '<div class="seg-label">Google reviews (all 3 shops) *</div>' + segHtml("k_reviews", [["Done all 3 shops", "ok"], ["Not yet", "no"]]) + "</div>" +
-      monthly +
-      '<div class="field"><label>Anything Nicole needs to know? <span class="opt">(optional)</span></label><textarea id="kForNicole"></textarea></div>';
-
-    var sales = "";
+    var sales = '<div class="group"><h3>Sales vs last week</h3>';
     AREA_SHOPS.forEach(function (shop) {
-      sales += '<div class="group"><h3>' + shop + ' <span data-ktag="' + shop + '"></span></h3>' +
-        '<div class="two-col"><div class="field"><label>This week ($) *</label><input type="text" inputmode="decimal" data-kthis="' + shop + '" placeholder="0.00"></div>' +
+      sales += '<div style="border-top:1px solid var(--line);padding-top:10px;margin-top:10px"><b>' + shop + ' <span data-ktag="' + shop + '"></span></b>' +
+        '<div class="two-col" style="margin-top:8px"><div class="field"><label>This week ($) *</label><input type="text" inputmode="decimal" data-kthis="' + shop + '" placeholder="0.00"></div>' +
         '<div class="field"><label>Last week ($) *</label><input type="text" inputmode="decimal" data-klast="' + shop + '" placeholder="0.00"></div></div>' +
         '<div class="hint" data-kpct="' + shop + '">Enter both weeks to compare.</div>' +
         '<div data-kdownwrap="' + shop + '" style="display:none;margin-top:10px">' +
@@ -1417,19 +1391,46 @@
         '<div class="seg-label">Posted in managers chat? *</div>' + segHtml("kchat_" + shop, [["Posted in chat", "ok"], ["Not posted yet", "no"]]) +
         "</div></div></div>";
     });
-    $("#kSalesForm").innerHTML = sales;
+    sales += "</div>";
 
-    var cardHtml = "";
+    var card = '<p class="hint">Split shared purchases; confirm each shop paid its share to the Chase card.</p>';
     AREA_SHOPS.forEach(function (shop) {
-      cardHtml += '<div class="group"><h3>' + shop + "</h3>" +
-        '<div class="seg-label">Chase card share *</div>' + segHtml("kshare_" + shop, [["Paid - matches", "ok"], ["Mismatch", "no"]]) +
+      card += '<div style="margin-top:8px"><b>' + shop + "</b>" +
+        segHtml("kshare_" + shop, [["Paid - matches", "ok"], ["Mismatch", "no"]]) +
         '<div class="field" data-ksharewrap="' + shop + '" style="display:none;margin-top:8px"><label>Describe the mismatch *</label><textarea data-kshare-notes="' + shop + '"></textarea></div></div>';
     });
-    $("#kCardForm").innerHTML = '<p class="hint" style="margin:4px 0 10px">Split shared purchases and confirm each shop paid its share to the Chase card.</p>' + cardHtml;
+
+    function weekBlock(n, title, inner) {
+      return '<details class="collapse"' + (wk === n ? " open" : "") + '><summary>Week ' + n + " — " + title + (wk === n ? " ← this week" : "") + "</summary>" +
+        '<div class="inner">' + (wk === n ? inner : '<p class="tbd">Not this week — nothing to fill.</p>') + "</div></details>";
+    }
+    var monthly =
+      weekBlock(1, "Card expense + paperwork", card +
+        '<div class="seg-label" style="margin-top:12px">Employee paperwork organized *</div>' + segHtml("k_paperwork", [["Organized", "ok"], ["Needs work", "no"]])) +
+      weekBlock(2, "Inventory count",
+        '<div class="seg-label">Inventory counted *</div>' + segHtml("k_inventory", [["Done", "ok"], ["Not yet", "no"]]) +
+        '<div class="field" style="margin-top:8px"><label>What\u2019s running low? *</label><textarea id="kLowItems" placeholder="Write \u201cnothing low\u201d if fully stocked"></textarea></div>') +
+      weekBlock(3, "Place the order",
+        '<div class="seg-label">Order placed (email list + low items) *</div>' + segHtml("k_order", [["Done", "ok"], ["Not yet", "no"]]) +
+        '<div class="field" id="kOrderNotesWrap" style="display:none;margin-top:8px"><label>Why not yet? *</label><textarea id="kOrderNotes"></textarea></div>') +
+      weekBlock(4, "Follow-up + performance report",
+        '<div class="seg-label">Order delivery *</div>' + segHtml("k_delivery", [["All delivered", "ok"], ["Missing items", "no"]]) +
+        '<div class="field" id="kDeliveryNotesWrap" style="display:none;margin-top:8px"><label>What\u2019s missing? *</label><textarea id="kDeliveryNotes"></textarea></div>' +
+        '<div class="seg-label">Monthly performance report *</div>' + segHtml("k_perf", [["Done", "ok"], ["Not yet", "no"]]));
+
+    $("#kTueForm").innerHTML =
+      '<p class="hint" style="margin:4px 0 10px">Week ' + wk + " of the month" + (wk === 5 ? " — no monthly items this week" : "") + "</p>" +
+      '<div class="group"><h3>Every Tuesday</h3>' +
+      '<div class="seg-label">New hires in the "Bank &amp; Checks" file *</div>' + segHtml("k_hires", [["All in the file", "ok"], ["Missing - told Dario", "no"]]) +
+      '<div class="field" id="kHiresNotesWrap" style="display:none;margin-top:8px"><label>Who / what is missing? *</label><textarea id="kHiresNotes"></textarea></div>' +
+      '<div class="seg-label">Google reviews (all 3 shops) *</div>' + segHtml("k_reviews", [["Done all 3 shops", "ok"], ["Not yet", "no"]]) + "</div>" +
+      sales +
+      (wk <= 4 ? '<h3 style="margin:14px 0 8px">This month\u2019s duties</h3>' + monthly : "") +
+      '<div class="field" style="margin-top:12px"><label>Anything Nicole needs to know? <span class="opt">(optional)</span></label><textarea id="kForNicole"></textarea></div>';
   }
 
   function kSalesRefresh(shop) {
-    var root = $("#kSalesForm");
+    var root = $("#kTueForm");
     var t = parseFloat(String(root.querySelector('[data-kthis="' + shop + '"]').value).replace(/[^0-9.\-]/g, ""));
     var l = parseFloat(String(root.querySelector('[data-klast="' + shop + '"]').value).replace(/[^0-9.\-]/g, ""));
     var pctEl = root.querySelector('[data-kpct="' + shop + '"]');
@@ -1445,8 +1446,7 @@
 
   function kSetMode(mode) {
     kMode = mode;
-    [["payroll", "#kTabPayroll", "#kPayrollForm"], ["tuesday", "#kTabTue", "#kTueForm"],
-     ["sales", "#kTabSales", "#kSalesForm"], ["cardexpense", "#kTabCard", "#kCardForm"]].forEach(function (t) {
+    [["payroll", "#kTabPayroll", "#kPayrollForm"], ["tuesday", "#kTabTue", "#kTueForm"]].forEach(function (t) {
       $(t[1]).classList.toggle("on", mode === t[0]);
       $(t[2]).style.display = mode === t[0] ? "" : "none";
     });
@@ -1479,21 +1479,19 @@
       if (k === "k_delivery") { var w2 = $("#kDeliveryNotesWrap"); if (w2) w2.style.display = v === "Missing items" ? "" : "none"; }
       if (k.indexOf("kcamp_") === 0) {
         var shop = k.slice(6);
-        $("#kSalesForm").querySelector('[data-kchatwrap="' + shop + '"]').style.display = v === "No campaign" ? "" : "none";
+        $("#kTueForm").querySelector('[data-kchatwrap="' + shop + '"]').style.display = v === "No campaign" ? "" : "none";
       }
       if (k.indexOf("kshare_") === 0) {
         var shop2 = k.slice(7);
-        $("#kCardForm").querySelector('[data-ksharewrap="' + shop2 + '"]').style.display = v === "Mismatch" ? "" : "none";
+        $("#kTueForm").querySelector('[data-ksharewrap="' + shop2 + '"]').style.display = v === "Mismatch" ? "" : "none";
       }
     });
-    $("#kSalesForm").addEventListener("input", function (e) {
+    $("#kTueForm").addEventListener("input", function (e) {
       var shop = e.target.getAttribute("data-kthis") || e.target.getAttribute("data-klast");
       if (shop) kSalesRefresh(shop);
     });
     $("#kTabPayroll").addEventListener("click", function () { kSetMode("payroll"); });
     $("#kTabTue").addEventListener("click", function () { kSetMode("tuesday"); });
-    $("#kTabSales").addEventListener("click", function () { kSetMode("sales"); });
-    $("#kTabCard").addEventListener("click", function () { kSetMode("cardexpense"); });
     $("#kBack").addEventListener("click", showChooser);
     $("#kSubmit").addEventListener("click", kSubmitForm);
   }
@@ -1504,29 +1502,34 @@
       var r = $("#kPayrollForm");
       d.payroll = segValue(r, "k_payroll"); d.notes = $("#kPayNotes").value.trim();
       d.resolved = segValue(r, "k_resolved"); d.attaf = segValue(r, "k_attaf"); d.attafWhy = $("#kAttafWhy").value.trim();
-    } else if (kMode === "tuesday") {
-      var t = $("#kTueForm");
-      d.hires = segValue(t, "k_hires"); d.hiresNotes = $("#kHiresNotes").value.trim();
-      d.reviews = segValue(t, "k_reviews"); d.forNicole = $("#kForNicole").value.trim();
-      d.paperwork = segValue(t, "k_paperwork"); d.inventory = segValue(t, "k_inventory");
+      return d;
+    }
+    var t = $("#kTueForm");
+    d.hires = segValue(t, "k_hires"); d.hiresNotes = $("#kHiresNotes").value.trim();
+    d.reviews = segValue(t, "k_reviews"); d.forNicole = $("#kForNicole").value.trim();
+    d.sales = {};
+    AREA_SHOPS.forEach(function (shop) {
+      d.sales[shop] = {
+        thisWeek: t.querySelector('[data-kthis="' + shop + '"]').value,
+        lastWeek: t.querySelector('[data-klast="' + shop + '"]').value,
+        campaign: segValue(t, "kcamp_" + shop), chat: segValue(t, "kchat_" + shop)
+      };
+    });
+    var wk = kWeekOfMonth();
+    if (wk === 1) {
+      d.card = {};
+      AREA_SHOPS.forEach(function (shop) {
+        d.card[shop] = { share: segValue(t, "kshare_" + shop), notes: t.querySelector('[data-kshare-notes="' + shop + '"]').value.trim() };
+      });
+      d.paperwork = segValue(t, "k_paperwork");
+    } else if (wk === 2) {
+      d.inventory = segValue(t, "k_inventory");
       d.lowItems = ($("#kLowItems") || { value: "" }).value.trim();
+    } else if (wk === 3) {
       d.order = segValue(t, "k_order"); d.orderNotes = ($("#kOrderNotes") || { value: "" }).value.trim();
+    } else if (wk === 4) {
       d.delivery = segValue(t, "k_delivery"); d.deliveryNotes = ($("#kDeliveryNotes") || { value: "" }).value.trim();
       d.perfReport = segValue(t, "k_perf");
-    } else if (kMode === "sales") {
-      var sroot = $("#kSalesForm"); d.shops = {};
-      AREA_SHOPS.forEach(function (shop) {
-        d.shops[shop] = {
-          thisWeek: sroot.querySelector('[data-kthis="' + shop + '"]').value,
-          lastWeek: sroot.querySelector('[data-klast="' + shop + '"]').value,
-          campaign: segValue(sroot, "kcamp_" + shop), chat: segValue(sroot, "kchat_" + shop)
-        };
-      });
-    } else {
-      var croot = $("#kCardForm"); d.shops = {};
-      AREA_SHOPS.forEach(function (shop) {
-        d.shops[shop] = { share: segValue(croot, "kshare_" + shop), notes: croot.querySelector('[data-kshare-notes="' + shop + '"]').value.trim() };
-      });
     }
     return d;
   }
@@ -1542,42 +1545,39 @@
       }
       if (!d.attaf) p.push("Pick an answer for the Bank & Checks file to Attaf.");
       if (d.attaf === "Not yet" && !d.attafWhy) p.push("Say why the file wasn't sent to Attaf yet.");
-    } else if (d.checkType === "tuesday") {
-      if (!d.hires) p.push("Pick an answer for new hires in the Bank & Checks file.");
-      if (d.hires === "Missing - told Dario" && !d.hiresNotes) p.push("Say who or what is missing.");
-      if (!d.reviews) p.push("Pick an answer for Google reviews.");
-      var wk = kWeekOfMonth();
-      if (wk === 1 && !d.paperwork) p.push("Pick an answer for employee paperwork.");
-      if (wk === 2) {
-        if (!d.inventory) p.push("Pick an answer for the inventory count.");
-        if (d.inventory === "Done" && !d.lowItems) p.push("List what's running low (or write \u201cnothing low\u201d).");
+      return p;
+    }
+    if (!d.hires) p.push("Pick an answer for new hires in the Bank & Checks file.");
+    if (d.hires === "Missing - told Dario" && !d.hiresNotes) p.push("Say who or what is missing.");
+    if (!d.reviews) p.push("Pick an answer for Google reviews.");
+    AREA_SHOPS.forEach(function (shop) {
+      var sd = d.sales[shop];
+      var t = money(sd.thisWeek), l = money(sd.lastWeek);
+      if (isNaN(t)) p.push(shop + ": enter this week's sales.");
+      if (!(l > 0)) p.push(shop + ": enter last week's sales.");
+      if (l > 0 && !isNaN(t) && t < l) {
+        if (!sd.campaign) p.push(shop + " is down — say whether an Engage campaign was sent.");
+        if (sd.campaign === "No campaign" && !sd.chat) p.push(shop + ": post it in the managers chat and pick an answer.");
       }
-      if (wk === 3) {
-        if (!d.order) p.push("Pick an answer for placing the order.");
-        if (d.order === "Not yet" && !d.orderNotes) p.push("Say why the order wasn't placed yet.");
-      }
-      if (wk === 4) {
-        if (!d.delivery) p.push("Pick an answer for the order delivery.");
-        if (d.delivery === "Missing items" && !d.deliveryNotes) p.push("Say what's missing from the delivery.");
-        if (!d.perfReport) p.push("Pick an answer for the monthly performance report.");
-      }
-    } else if (d.checkType === "sales") {
+    });
+    var wk = kWeekOfMonth();
+    if (wk === 1) {
       AREA_SHOPS.forEach(function (shop) {
-        var sd = d.shops[shop];
-        var t = money(sd.thisWeek), l = money(sd.lastWeek);
-        if (isNaN(t)) p.push(shop + ": enter this week's sales.");
-        if (!(l > 0)) p.push(shop + ": enter last week's sales.");
-        if (l > 0 && !isNaN(t) && t < l) {
-          if (!sd.campaign) p.push(shop + " is down — say whether an Engage campaign was sent.");
-          if (sd.campaign === "No campaign" && !sd.chat) p.push(shop + ": post it in the managers chat and pick an answer.");
-        }
-      });
-    } else {
-      AREA_SHOPS.forEach(function (shop) {
-        var cd = d.shops[shop];
+        var cd = d.card[shop];
         if (!cd.share) p.push(shop + ": say whether its Chase card share matches.");
         if (cd.share === "Mismatch" && !cd.notes) p.push(shop + ": describe the mismatch.");
       });
+      if (!d.paperwork) p.push("Pick an answer for employee paperwork.");
+    } else if (wk === 2) {
+      if (!d.inventory) p.push("Pick an answer for the inventory count.");
+      if (d.inventory === "Done" && !d.lowItems) p.push("List what's running low (or write \u201cnothing low\u201d).");
+    } else if (wk === 3) {
+      if (!d.order) p.push("Pick an answer for placing the order.");
+      if (d.order === "Not yet" && !d.orderNotes) p.push("Say why the order wasn't placed yet.");
+    } else if (wk === 4) {
+      if (!d.delivery) p.push("Pick an answer for the order delivery.");
+      if (d.delivery === "Missing items" && !d.deliveryNotes) p.push("Say what's missing from the delivery.");
+      if (!d.perfReport) p.push("Pick an answer for the monthly performance report.");
     }
     return p;
   }
@@ -1660,9 +1660,7 @@
           dashRow(!!d.dario.friday, "Friday Sales Check", d.dario.friday ? escapeHtml(d.dario.friday.summary) : "Not submitted yet") + "</div>";
         h += '<div class="group"><h3>🗓️ Krystal this week</h3>' +
           dashRow(!!d.krystal.payroll, "Payroll (Sun–Mon)", d.krystal.payroll ? escapeHtml(d.krystal.payroll.summary) : "Not submitted yet") +
-          dashRow(!!d.krystal.tuesday, "Tuesday duties", d.krystal.tuesday ? escapeHtml(d.krystal.tuesday.summary) : "Not submitted yet") +
-          dashRow(!!d.krystal.sales, "Weekly sales check", d.krystal.sales ? escapeHtml(d.krystal.sales.summary) : "Not submitted yet") +
-          (d.weekOfMonth === 1 ? dashRow(!!d.krystal.card, "Card expense check (week 1)", d.krystal.card ? escapeHtml(d.krystal.card.summary) : "Not submitted yet") : "") +
+          dashRow(!!d.krystal.tuesday, "Tuesday check-in (sales + week " + d.weekOfMonth + " duties)", d.krystal.tuesday ? escapeHtml(d.krystal.tuesday.summary) : "Not submitted yet") +
           "</div>";
         h += '<div class="group"><h3>🗂️ Office documents this week (' + d.office.length + ")</h3>";
         if (!d.office.length) h += '<p class="hint">None filed yet this week.</p>';

@@ -165,7 +165,7 @@ function doGet(e) {
   var p = (e && e.parameter) || {};
   // One-click approve / reject straight from the notification email.
   if (p.a === 'approve' || p.a === 'reject') return handleDecision_(p);
-  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v10 — role check-ins (Krystal + Dario)' });
+  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v11 — one-page Tuesday check-ins' });
 }
 
 // ---- Signed approval links -------------------------------------------------
@@ -1864,14 +1864,17 @@ function validateTuesday_(data) {
   if (['Yes', 'Need to reprint'].indexOf(training) === -1) problems.push('Pick an answer for Training paperwork.');
   if (['Yes', 'No holiday coming', 'Not yet'].indexOf(campaigns) === -1) problems.push('Pick an answer for Holiday campaigns.');
   if (['Updated', 'No changes this week'].indexOf(payroll) === -1) problems.push('Pick an answer for Payroll (new contractors / staff changes).');
+  var sitdown = clean_(data.sitdown, 30), idea = clean_(data.idea, 1200);
+  if (['Done this month', 'Scheduled', 'Not yet'].indexOf(sitdown) === -1) problems.push('Pick an answer for the monthly sit-down with Nicole.');
   var forNicole = clean_(data.forNicole, 1500);
   var summary = (issues.length ? 'Issues at: ' + issues.join(', ') : 'All good at all shops') +
     ' \u00b7 ' + dups + ' duplicates merged';
   if (training === 'Need to reprint') summary += ' \u00b7 training paperwork needs reprint';
   if (campaigns === 'Not yet') summary += ' \u00b7 holiday campaigns not scheduled yet';
+  if (sitdown === 'Not yet') summary += ' \u00b7 monthly sit-down not scheduled';
   return {
     ok: problems.length === 0, problems: problems, issues: issues, summary: summary,
-    payload: { shops: shops, duplicates: dups, careers: careers, training: training, campaigns: campaigns, payroll: payroll, forNicole: forNicole }
+    payload: { shops: shops, duplicates: dups, careers: careers, training: training, campaigns: campaigns, payroll: payroll, sitdown: sitdown, idea: idea, forNicole: forNicole }
   };
 }
 
@@ -1903,7 +1906,7 @@ function sendAreaEmail_(ref, who, type, check, now) {
     var stamp = Utilities.formatDate(now, tz_(), "EEEE, MMMM d 'at' h:mm a");
     var title = type === 'tuesday' ? 'Tuesday Check' : 'Friday Sales Check';
     var alert = type === 'tuesday' ? check.issues.length : check.behind.length;
-    var subject = 'Area Manager Check-in – ' + title + ' – ' + Utilities.formatDate(now, tz_(), 'MMM d') +
+    var subject = "Dario's Check-in – " + title + ' – ' + Utilities.formatDate(now, tz_(), 'MMM d') +
       (alert ? ' – ⚠ ATTENTION' : ' – all good');
     var rows = '';
     AREA_SHOPS.forEach(function (shop) {
@@ -1923,14 +1926,14 @@ function sendAreaEmail_(ref, who, type, check, now) {
     var extra = '';
     if (type === 'tuesday') {
       var p = check.payload;
-      extra = '<p style="color:#444">Squire duplicates merged: <b>' + p.duplicates + '</b> (min 30) \u00b7 Payroll: <b>' + esc_(p.payroll) + '</b> \u00b7 Careers replies: <b>' + esc_(p.careers) + '</b> · Training paperwork: <b>' + esc_(p.training) +
+      extra = '<p style="color:#444">Squire duplicates merged: <b>' + p.duplicates + '</b> (min 30) \u00b7 Payroll: <b>' + esc_(p.payroll) + '</b> \u00b7 Sit-down with Nicole: <b>' + esc_(p.sitdown) + '</b>' + (p.idea ? ' \u00b7 Idea: ' + esc_(p.idea) : '') + ' \u00b7 Careers replies: <b>' + esc_(p.careers) + '</b> · Training paperwork: <b>' + esc_(p.training) +
         '</b> · Holiday campaigns: <b>' + esc_(p.campaigns) + '</b></p>' +
         (p.forNicole ? '<div style="background:#fdf6e3;border:1px solid #e8d48a;border-radius:8px;padding:10px 14px"><b>For Nicole:</b> ' + esc_(p.forNicole) + '</div>' : '');
     }
     var html =
       '<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;max-width:640px;margin:0 auto">' +
       '<div style="font-family:Georgia,serif;font-size:24px;font-weight:800;letter-spacing:1px">BARBER &amp; CO</div>' +
-      '<div style="color:#b8912a;font-style:italic;margin-bottom:14px">Area Manager Check-in</div>' +
+      '<div style="color:#b8912a;font-style:italic;margin-bottom:14px">Check-in \u00b7 Dario</div>' +
       '<p><b>' + esc_(title) + '</b> — submitted by ' + esc_(who) + ' on ' + stamp + '</p>' +
       '<p style="font-size:15px;' + (alert ? 'color:#a3271a;font-weight:700' : 'color:#1f8a4c') + '">' + esc_(check.summary) + '</p>' +
       '<table style="border-collapse:collapse;width:100%;border:1px solid #eee">' + rows + '</table>' + extra +
@@ -1949,7 +1952,7 @@ function sendAreaEmail_(ref, who, type, check, now) {
 // monthly items), weekly sales vs last week, and the week-1 card expense
 // check. Saved to the "Krystal Check-ins" tab, audited, and emailed.
 // ===========================================================================
-var K_TYPES = { payroll: 'Payroll (Sun-Mon)', tuesday: 'Tuesday Duties', sales: 'Weekly Sales Check', cardexpense: 'Card Expense Check' };
+var K_TYPES = { payroll: 'Payroll (Sun-Mon)', tuesday: 'Tuesday Duties' };
 
 function handleKrystalCheck_(data, mgr) {
   var who = clean_(mgr.name, 80).toLowerCase();
@@ -1959,10 +1962,7 @@ function handleKrystalCheck_(data, mgr) {
   }
   var type = String(data.checkType || '');
   if (!K_TYPES[type]) return json({ status: 'error', message: 'Pick which check-in you are submitting.' });
-  var check = type === 'payroll' ? validateKPayroll_(data)
-    : type === 'tuesday' ? validateKTuesday_(data)
-    : type === 'sales' ? validateKSales_(data)
-    : validateKCard_(data);
+  var check = type === 'payroll' ? validateKPayroll_(data) : validateKTuesday_(data);
   if (!check.ok) return json({ status: 'error', message: check.problems.join(' ') });
 
   var cache = CacheService.getScriptCache();
@@ -2023,6 +2023,7 @@ function validateKPayroll_(data) {
 
 function validateKTuesday_(data) {
   var problems = [], flags = [];
+  // --- weekly -------------------------------------------------------------
   var hires = clean_(data.hires, 40), hiresNotes = clean_(data.hiresNotes, 1000);
   var reviews = clean_(data.reviews, 40);
   if (['All in the file', 'Missing - told Dario'].indexOf(hires) === -1) problems.push('Pick an answer for new hires in the Bank & Checks file.');
@@ -2033,9 +2034,40 @@ function validateKTuesday_(data) {
   if (['Done all 3 shops', 'Not yet'].indexOf(reviews) === -1) problems.push('Pick an answer for Google reviews.');
   if (reviews === 'Not yet') flags.push('Google reviews pending');
 
+  // --- sales vs last week (inside the Tuesday form) -----------------------
+  var sales = {};
+  AREA_SHOPS.forEach(function (shop) {
+    var sv = (data.sales && data.sales[shop]) || {};
+    var thisWeek = num_(sv.thisWeek), lastWeek = num_(sv.lastWeek);
+    if (String(sv.thisWeek || '') === '') problems.push(shop + ": enter this week's sales.");
+    if (!(lastWeek > 0)) problems.push(shop + ": enter last week's sales.");
+    var down = lastWeek > 0 && thisWeek < lastWeek;
+    var pct = lastWeek > 0 ? Math.round((thisWeek / lastWeek - 1) * 1000) / 10 : 0;
+    var campaign = clean_(sv.campaign, 30), chat = clean_(sv.chat, 40);
+    if (down) {
+      if (['Campaign sent', 'No campaign'].indexOf(campaign) === -1) problems.push(shop + ' is down \u2014 say whether an Engage campaign was sent.');
+      if (campaign === 'No campaign') {
+        if (['Posted in chat', 'Not posted yet'].indexOf(chat) === -1) problems.push(shop + ': no campaign was sent \u2014 post it in the managers chat and pick an answer.');
+        if (chat === 'Not posted yet') flags.push(shop + ' down, nothing posted');
+      }
+    }
+    sales[shop] = { thisWeek: thisWeek, lastWeek: lastWeek, pct: pct, down: down, campaign: campaign, chat: chat };
+  });
+  var downShops = AREA_SHOPS.filter(function (x) { return sales[x].down; });
+  if (downShops.length) flags.push('down vs last week: ' + downShops.join(', '));
+
+  // --- this week's monthly section (weeks 1-4, like the manager report) ---
   var wk = weekOfMonth_(new Date());
-  var m = {};
+  var m = { week: wk };
   if (wk === 1) {
+    m.card = {};
+    AREA_SHOPS.forEach(function (shop) {
+      var cv = (data.card && data.card[shop]) || {};
+      var share = clean_(cv.share, 30), notes = clean_(cv.notes, 1200);
+      if (['Paid - matches', 'Mismatch'].indexOf(share) === -1) problems.push(shop + ': say whether its Chase card share matches.');
+      if (share === 'Mismatch') { if (!notes) problems.push(shop + ': describe the card mismatch so Nicole can look at it.'); flags.push(shop + ' card mismatch'); }
+      m.card[shop] = { share: share, notes: notes };
+    });
     m.paperwork = clean_(data.paperwork, 30);
     if (['Organized', 'Needs work'].indexOf(m.paperwork) === -1) problems.push('Pick an answer for employee paperwork.');
     if (m.paperwork === 'Needs work') flags.push('paperwork needs work');
@@ -2060,49 +2092,9 @@ function validateKTuesday_(data) {
     if (m.perfReport === 'Not yet') flags.push('performance report pending');
   }
   var forNicole = clean_(data.forNicole, 1500);
-  var summary = (flags.length ? 'Attention: ' + flags.join(', ') : 'All duties done') + ' (week ' + wk + ' of month)';
+  var summary = (flags.length ? 'Attention: ' + flags.join(', ') : 'All duties done, all shops up') + ' (week ' + wk + ' of month)';
   return { ok: problems.length === 0, problems: problems, flags: flags, summary: summary,
-    payload: { hires: hires, hiresNotes: hiresNotes, reviews: reviews, weekOfMonth: wk, monthly: m, forNicole: forNicole } };
-}
-
-function validateKSales_(data) {
-  var problems = [], flags = [];
-  var shops = {};
-  AREA_SHOPS.forEach(function (shop) {
-    var s = (data.shops && data.shops[shop]) || {};
-    var thisWeek = num_(s.thisWeek), lastWeek = num_(s.lastWeek);
-    if (String(s.thisWeek || '') === '') problems.push(shop + ": enter this week's sales.");
-    if (!(lastWeek > 0)) problems.push(shop + ": enter last week's sales.");
-    var down = lastWeek > 0 && thisWeek < lastWeek;
-    var pct = lastWeek > 0 ? Math.round((thisWeek / lastWeek - 1) * 1000) / 10 : 0;
-    var campaign = clean_(s.campaign, 30), chat = clean_(s.chat, 40);
-    if (down) {
-      if (['Campaign sent', 'No campaign'].indexOf(campaign) === -1) problems.push(shop + ' is down — say whether an Engage campaign was sent.');
-      if (campaign === 'No campaign') {
-        if (['Posted in chat', 'Not posted yet'].indexOf(chat) === -1) problems.push(shop + ': no campaign was sent — post it in the managers chat and pick an answer.');
-        if (chat === 'Not posted yet') flags.push(shop + ' down, nothing posted');
-      }
-      if (campaign !== 'Campaign sent' && chat !== 'Posted in chat') flags.push(shop + ' down');
-    }
-    shops[shop] = { thisWeek: thisWeek, lastWeek: lastWeek, pct: pct, down: down, campaign: campaign, chat: chat };
-  });
-  var downShops = AREA_SHOPS.filter(function (x) { return shops[x].down; });
-  var summary = downShops.length ? 'Down vs last week: ' + downShops.join(', ') : 'All shops up vs last week';
-  return { ok: problems.length === 0, problems: problems, flags: flags, summary: summary, payload: { shops: shops } };
-}
-
-function validateKCard_(data) {
-  var problems = [], flags = [];
-  var shops = {};
-  AREA_SHOPS.forEach(function (shop) {
-    var s = (data.shops && data.shops[shop]) || {};
-    var share = clean_(s.share, 30), notes = clean_(s.notes, 1200);
-    if (['Paid - matches', 'Mismatch'].indexOf(share) === -1) problems.push(shop + ': say whether its Chase card share matches.');
-    if (share === 'Mismatch') { if (!notes) problems.push(shop + ': describe the mismatch so Nicole can look at it.'); flags.push(shop + ' mismatch'); }
-    shops[shop] = { share: share, notes: notes };
-  });
-  var summary = flags.length ? 'CARD MISMATCH: ' + flags.join(', ') : 'All shops paid their share - matches';
-  return { ok: problems.length === 0, problems: problems, flags: flags, summary: summary, payload: { shops: shops } };
+    payload: { hires: hires, hiresNotes: hiresNotes, reviews: reviews, sales: sales, monthly: m, forNicole: forNicole } };
 }
 
 function sendKrystalEmail_(ref, who, type, check, now) {
@@ -2110,48 +2102,43 @@ function sendKrystalEmail_(ref, who, type, check, now) {
     var stamp = Utilities.formatDate(now, tz_(), "EEEE, MMMM d 'at' h:mm a");
     var title = K_TYPES[type];
     var alert = (check.flags || []).length;
-    var subject = 'Check-in – ' + title + ' – ' + Utilities.formatDate(now, tz_(), 'MMM d') + (alert ? ' – \u26a0 ATTENTION' : ' – all good');
-    var body = '<pre style="font-family:inherit;white-space:pre-wrap;color:#333">' + esc_(JSON.stringify(check.payload, null, 2)) + '</pre>';
-    if (type === 'sales' || type === 'cardexpense') {
-      var rows = '';
-      AREA_SHOPS.forEach(function (shop) {
-        var s = check.payload.shops[shop];
-        if (type === 'sales') {
-          rows += '<tr><td style="padding:6px 10px;font-weight:700">' + esc_(shop) + '</td>' +
-            '<td style="padding:6px 10px">' + money_(s.thisWeek) + ' vs ' + money_(s.lastWeek) + '</td>' +
-            '<td style="padding:6px 10px;font-weight:700;color:' + (s.down ? '#a3271a' : '#1f8a4c') + '">' + (s.pct >= 0 ? '+' : '') + s.pct + '%' + (s.down ? ' — DOWN' : '') + '</td>' +
-            '<td style="padding:6px 10px">' + (s.down ? esc_(s.campaign + (s.campaign === 'No campaign' ? ' / ' + s.chat : '')) : '') + '</td></tr>';
-        } else {
-          rows += '<tr><td style="padding:6px 10px;font-weight:700">' + esc_(shop) + '</td>' +
-            '<td style="padding:6px 10px;font-weight:700;color:' + (s.share === 'Mismatch' ? '#a3271a' : '#1f8a4c') + '">' + esc_(s.share) + '</td>' +
-            '<td style="padding:6px 10px;color:#555">' + esc_(s.notes || '') + '</td></tr>';
-        }
-      });
-      body = '<table style="border-collapse:collapse;width:100%;border:1px solid #eee">' + rows + '</table>';
-    } else if (type === 'payroll') {
+    var subject = "Krystal's Check-in \u2013 " + title + ' \u2013 ' + Utilities.formatDate(now, tz_(), 'MMM d') + (alert ? ' \u2013 \u26a0 ATTENTION' : ' \u2013 all good');
+    var body = '';
+    if (type === 'payroll') {
       var p = check.payload;
       body = '<p>Payroll review: <b>' + esc_(p.payroll) + '</b>' + (p.resolved ? ' \u00b7 ' + esc_(p.resolved) : '') + '</p>' +
         (p.notes ? '<p style="color:#555">\ud83d\udcdd ' + esc_(p.notes) + '</p>' : '') +
-        '<p>Bank &amp; Checks file to Attaf: <b>' + esc_(p.attaf) + '</b>' + (p.attafWhy ? ' — ' + esc_(p.attafWhy) : '') + '</p>';
-    } else if (type === 'tuesday') {
+        '<p>Bank &amp; Checks file to Attaf: <b>' + esc_(p.attaf) + '</b>' + (p.attafWhy ? ' \u2014 ' + esc_(p.attafWhy) : '') + '</p>';
+    } else {
       var t = check.payload;
-      body = '<p>New hires in Bank &amp; Checks: <b>' + esc_(t.hires) + '</b>' + (t.hiresNotes ? ' — ' + esc_(t.hiresNotes) : '') + '</p>' +
-        '<p>Google reviews: <b>' + esc_(t.reviews) + '</b> \u00b7 Week ' + t.weekOfMonth + ' of the month</p>' +
-        '<pre style="font-family:inherit;white-space:pre-wrap;color:#555">' + esc_(JSON.stringify(t.monthly, null, 2)) + '</pre>' +
+      var rows = '';
+      AREA_SHOPS.forEach(function (shop) {
+        var sv = t.sales[shop];
+        rows += '<tr><td style="padding:6px 10px;font-weight:700">' + esc_(shop) + '</td>' +
+          '<td style="padding:6px 10px">' + money_(sv.thisWeek) + ' vs ' + money_(sv.lastWeek) + '</td>' +
+          '<td style="padding:6px 10px;font-weight:700;color:' + (sv.down ? '#a3271a' : '#1f8a4c') + '">' + (sv.pct >= 0 ? '+' : '') + sv.pct + '%' + (sv.down ? ' \u2014 DOWN' : '') + '</td>' +
+          '<td style="padding:6px 10px">' + (sv.down ? esc_(sv.campaign + (sv.campaign === 'No campaign' ? ' / ' + sv.chat : '')) : '') + '</td></tr>';
+      });
+      body = '<p>New hires in Bank &amp; Checks: <b>' + esc_(t.hires) + '</b>' + (t.hiresNotes ? ' \u2014 ' + esc_(t.hiresNotes) : '') + '</p>' +
+        '<p>Google reviews: <b>' + esc_(t.reviews) + '</b></p>' +
+        '<p style="margin-bottom:4px"><b>Sales vs last week</b></p>' +
+        '<table style="border-collapse:collapse;width:100%;border:1px solid #eee">' + rows + '</table>' +
+        '<p style="margin-bottom:4px"><b>Monthly \u2014 week ' + t.monthly.week + '</b></p>' +
+        '<pre style="font-family:inherit;white-space:pre-wrap;color:#555;margin-top:0">' + esc_(JSON.stringify(t.monthly, null, 2)) + '</pre>' +
         (t.forNicole ? '<div style="background:#fdf6e3;border:1px solid #e8d48a;border-radius:8px;padding:10px 14px"><b>For Nicole:</b> ' + esc_(t.forNicole) + '</div>' : '');
     }
     var html =
       '<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;max-width:640px;margin:0 auto">' +
       '<div style="font-family:Georgia,serif;font-size:24px;font-weight:800;letter-spacing:1px">BARBER &amp; CO</div>' +
       '<div style="color:#b8912a;font-style:italic;margin-bottom:14px">Check-in \u00b7 Krystal</div>' +
-      '<p><b>' + esc_(title) + '</b> — submitted by ' + esc_(who) + ' on ' + stamp + '</p>' +
+      '<p><b>' + esc_(title) + '</b> \u2014 submitted by ' + esc_(who) + ' on ' + stamp + '</p>' +
       '<p style="font-size:15px;' + (alert ? 'color:#a3271a;font-weight:700' : 'color:#1f8a4c') + '">' + esc_(check.summary) + '</p>' +
       body +
       '<p style="color:#888;font-size:12px">Reference ' + esc_(ref) + ' \u00b7 Logged in the "Krystal Check-ins" tab.</p></div>';
     MailApp.sendEmail({
       to: cfg('AREA_EMAIL') || cfg('OFFICE_EMAIL'),
       subject: subject,
-      body: title + ' by ' + who + ' — ' + check.summary + ' (ref ' + ref + ')',
+      body: title + ' by ' + who + ' \u2014 ' + check.summary + ' (ref ' + ref + ')',
       htmlBody: html
     });
   } catch (e) { logError_(e); }
@@ -2183,7 +2170,10 @@ function handleDashboard_(data, mgr, isAdmin) {
         var ref = String(r[0] || ''); if (!ref) return;
         var loc = String(r[3] || ''), wkS = parseYmd_(String(r[4] || '')), status = String(r[col - 1] || '');
         if (/^PENDING/.test(status)) {
-          reports.pending.push({ ref: ref, manager: String(r[2] || ''), location: loc, week: String(r[4] || '') + ' to ' + String(r[5] || '') });
+          var subAt = new Date(String(r[1]).replace(' ', 'T'));
+          if (!isNaN(subAt.getTime()) && subAt >= monday) {
+            reports.pending.push({ ref: ref, manager: String(r[2] || ''), location: loc, week: String(r[4] || '') + ' to ' + String(r[5] || '') });
+          }
         }
         AREA_SHOPS.forEach(function (shopWord) {
           if (loc.toLowerCase().indexOf(shopWord.toLowerCase()) === -1 && !(shopWord === 'Edgewater' && /miami/i.test(loc))) return;
@@ -2229,9 +2219,7 @@ function handleDashboard_(data, mgr, isAdmin) {
         dario: { tuesday: dario['Tuesday Check'] || null, friday: dario['Friday Sales Check'] || null },
         krystal: {
           payroll: krystal['Payroll (Sun-Mon)'] || null,
-          tuesday: krystal['Tuesday Duties'] || null,
-          sales: krystal['Weekly Sales Check'] || null,
-          card: krystal['Card Expense Check'] || null
+          tuesday: krystal['Tuesday Duties'] || null
         },
         office: office.slice(-10)
       }
