@@ -163,7 +163,7 @@ function doGet(e) {
   var p = (e && e.parameter) || {};
   // One-click approve / reject straight from the notification email.
   if (p.a === 'approve' || p.a === 'reject') return handleDecision_(p);
-  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v5 — one finance folder, auto year/month/week' });
+  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v6 — office documents' });
 }
 
 // ---- Signed approval links -------------------------------------------------
@@ -269,6 +269,10 @@ function doPost(e) {
       alertAdmin_('Submission rate limit hit', mgr.name + ' exceeded ' + cap + ' reports in one hour.');
       return json({ status: 'error', message: 'You have submitted ' + cap + ' reports in the past hour, which is the safety limit. Please wait a little and continue — nothing you entered was lost.' });
     }
+
+    // 2d-bis) OFFICE DOCUMENTS — commission payouts, hostess hours, bank &
+    // checks, monthly expense reports. Admin-only; files straight into Drive.
+    if (data.action === 'officedoc') return handleOfficeDoc_(data, mgr, isAdmin);
 
     // 2e) SECURITY SCREENING of attachments (type / size / count / duplicates)
     var screen = screenFiles_(data);
@@ -476,8 +480,13 @@ function approxBytes_(dataUrl) {
 /**
  * Screens every attachment. Returns
  * { ok, problems[], files:[{bucket,name,type,bytes,hash,dataUrl}], hashes[] }
+ * opts.extraExt / opts.extraMime widen the allow-list (used for office
+ * documents, where spreadsheets are legitimate); the block-list always wins.
  */
-function screenFiles_(data) {
+function screenFiles_(data, opts) {
+  opts = opts || {};
+  var allowExt = ALLOWED_EXT.concat(opts.extraExt || []);
+  var allowMime = ALLOWED_MIME.concat(opts.extraMime || []);
   var problems = [], files = [], seen = {};
   var uploads = (data && data.uploads) || {};
   var maxFiles = parseInt(cfg('MAX_FILES'), 10);
@@ -492,8 +501,8 @@ function screenFiles_(data) {
       var ext = extOf_(name);
 
       if (BLOCKED_EXT.indexOf(ext) !== -1) { problems.push('Blocked file type rejected: ' + name); return; }
-      if (ALLOWED_EXT.indexOf(ext) === -1) { problems.push('Unsupported file type rejected: ' + name + ' (allowed: PDF, JPG, JPEG, PNG, HEIC)'); return; }
-      if (type && ALLOWED_MIME.indexOf(type) === -1) { problems.push('File content type not allowed: ' + name); return; }
+      if (allowExt.indexOf(ext) === -1) { problems.push('Unsupported file type rejected: ' + name + ' (allowed: ' + allowExt.join(', ').toUpperCase() + ')'); return; }
+      if (type && allowMime.indexOf(type) === -1) { problems.push('File content type not allowed: ' + name); return; }
       if (/\.(exe|bat|cmd|js|scr|msi)\./i.test(name)) { problems.push('Misleading filename rejected: ' + name); return; }
 
       var bytes = approxBytes_(f.dataUrl);
@@ -1509,6 +1518,266 @@ function existingChild_(parent, name) {
 function childFolder_(parent, name) {
   var it = parent.getFoldersByName(name);
   return it.hasNext() ? it.next() : parent.createFolder(name);
+}
+
+// ===========================================================================
+// OFFICE DOCUMENTS — commission payouts, hostess hours, bank & checks,
+// monthly expense reports. Admin-only; filed straight into Drive (no review
+// step), with an email notification, a sheet row, and an audit entry.
+// ===========================================================================
+var OFFICE_TYPES = {
+  commission: { label: 'Commission Payout', perLocation: true, period: 'week' },
+  hostess: { label: 'Hostess Hours Report', perLocation: true, period: 'week' },
+  bank: { label: 'Bank & Checks', perLocation: false, period: 'week' },
+  expense: { label: 'Monthly Expense Report', perLocation: false, period: 'month' }
+};
+var OFFICE_EXTRA_EXT = ['xlsx', 'xls', 'csv'];
+var OFFICE_EXTRA_MIME = [
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.ms-excel', 'text/csv', 'application/csv'
+];
+var OFFICE_HEADERS = ['Reference #', 'Filed At', 'Submitted By', 'Document Type', 'Location', 'Period', 'Files', 'Destination', 'Status'];
+var OFFICE_FOLDER_HEADERS = ['Document / Location', 'Drive Folder Link', 'Notes'];
+// Commission - Payouts month folders were created without a year during 2026
+// ("8. August"); they are matched by month name for that year only. From 2027
+// on, a year folder is created and months live inside it.
+var LEGACY_YEARLESS_YEAR = '2026';
+
+function handleOfficeDoc_(data, mgr, isAdmin) {
+  if (!isAdmin) {
+    audit_('OFFICE DOC BLOCKED', { manager: mgr.name, verification: 'OK', status: STATUS.REJECTED, detail: 'Not an admin' });
+    return json({ status: 'error', message: 'Only admins can file office documents.' });
+  }
+  var t = OFFICE_TYPES[String(data.docType || '')];
+  if (!t) return json({ status: 'error', message: 'Please choose a document type.' });
+  var location = clean_(data.location, 60);
+  if (t.perLocation && !location) return json({ status: 'error', message: 'Please choose a location.' });
+
+  var d1 = null, d2 = null, monthDate = null, periodText = '';
+  if (t.period === 'week') {
+    d1 = parseYmd_(clean_(data.weekStart, 20));
+    d2 = parseYmd_(clean_(data.weekEnd, 20));
+    if (!d1 || !d2) return json({ status: 'error', message: 'Please pick the week start and end dates.' });
+    periodText = weekFolderName_(clean_(data.weekStart, 20), clean_(data.weekEnd, 20));
+  } else {
+    monthDate = parseYmd_(clean_(data.month, 20) + '-01');
+    if (!monthDate) return json({ status: 'error', message: 'Please pick the month.' });
+    periodText = Utilities.formatDate(monthDate, tz_(), 'MMMM yyyy');
+  }
+
+  var screen = screenFiles_(data, { extraExt: OFFICE_EXTRA_EXT, extraMime: OFFICE_EXTRA_MIME });
+  if (!screen.ok) {
+    audit_('OFFICE DOC SCREENING FAILED', { manager: mgr.name, location: location, screening: 'BLOCKED', status: STATUS.QUARANTINED, detail: screen.problems.join(' | ') });
+    return json({ status: 'error', message: screen.problems.join(' ') });
+  }
+  if (!screen.files.length) return json({ status: 'error', message: 'Please attach at least one file.' });
+
+  // Idempotent: a retried submission reports the first result, files nothing twice.
+  var cache = CacheService.getScriptCache();
+  var subId = sanitizeToken_(data.submissionId) || Utilities.getUuid();
+  var key = 'od_' + subId;
+  var prior = cache.get(key);
+  if (prior) { prior = JSON.parse(prior); return json({ status: 'success', ref: prior.ref, filedTo: prior.filedTo, duplicate: true }); }
+
+  var base = officeBase_(String(data.docType), location);
+  if (!base) return json({ status: 'error', message: 'No Drive folder is set up for that document type. Check the "Office Folders" tab in the spreadsheet.' });
+
+  var target = (data.docType === 'expense') ? base : officeMonthParent_(base, t.period === 'week' ? d2 : monthDate);
+
+  var now = new Date();
+  var ref = makeOfficeRef_(now);
+  var names = [];
+  for (var i = 0; i < screen.files.length; i++) {
+    var f = screen.files[i];
+    var nm = uniqueName_(target, officeFileName_(String(data.docType), periodText, i, screen.files.length, f.name));
+    var parts = String(f.dataUrl).split(',');
+    target.createFile(Utilities.newBlob(Utilities.base64Decode(parts[1] || parts[0]), f.type, nm));
+    names.push(nm);
+  }
+
+  saveOfficeRow_(ref, now, mgr.name, t.label, location, periodText, names, target.getUrl());
+  audit_('OFFICE DOC FILED', {
+    ref: ref, manager: mgr.name, location: location || 'ALL', fileCount: names.length,
+    fileNames: names, verification: 'OK', screening: 'PASSED', status: STATUS.COMPLETED, detail: target.getUrl()
+  });
+  sendOfficeEmail_(ref, mgr.name, t.label, location, periodText, names, target);
+  cache.put(key, JSON.stringify({ ref: ref, filedTo: target.getName() }), 21600);
+
+  return json({ status: 'success', ref: ref, filedTo: target.getName(), files: names.length });
+}
+
+/** The Drive folder configured for a document type (per location for commission/hostess). */
+function officeBase_(docType, location) {
+  var sh = ensureOfficeFolderSheet_();
+  var rows = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues() : [];
+  var wantLabel = docType === 'bank' ? 'bank' : docType === 'expense' ? 'monthly expense' : 'commission';
+  var loc = String(location || '').toLowerCase();
+  var locTokens = loc.split(/[^a-z]+/).filter(function (tk) { return tk.length > 2; });
+  for (var i = 0; i < rows.length; i++) {
+    var name = String(rows[i][0] || '').toLowerCase();
+    var id = folderIdFromUrl_(rows[i][1]);
+    if (!id || name.indexOf(wantLabel) === -1) continue;
+    if (wantLabel === 'commission') {
+      var match = false;
+      for (var j = 0; j < locTokens.length; j++) if (name.indexOf(locTokens[j]) !== -1) { match = true; break; }
+      if (!match) continue;
+    }
+    try { return DriveApp.getFolderById(id); } catch (e) { return null; }
+  }
+  return null;
+}
+
+/** Creates the office-folder mapping tab, seeded with the shop's real folders. */
+function ensureOfficeFolderSheet_() {
+  var ss = getSpreadsheet_();
+  var sh = ss.getSheetByName('Office Folders');
+  if (sh) return sh;
+  sh = ss.insertSheet('Office Folders');
+  sh.appendRow(OFFICE_FOLDER_HEADERS);
+  sh.getRange(1, 1, 1, OFFICE_FOLDER_HEADERS.length).setFontWeight('bold');
+  sh.setFrozenRows(1);
+  [['Bank & Checks', 'https://drive.google.com/drive/folders/1D7bT6gRbtyYeinPR9_sfo-RzRQ-_i_wr', ''],
+   ['Monthly Expense Report', 'https://drive.google.com/drive/folders/13Wa9fxdb1SU9kmbSj5dTirkoTvgwU-U1', ''],
+   ['Commission - Edgewater', 'https://drive.google.com/drive/folders/18Dt2CcDMiH7zoV7cp6_ctan1tRTS6UA6', 'Hostess hours file here too'],
+   ['Commission - Pinecrest', 'https://drive.google.com/drive/folders/1GgcPziZUI8u6TTmCDfv1XBIolJ49WY6i', 'Hostess hours file here too'],
+   ['Commission - Studio', 'https://drive.google.com/drive/folders/1VsDG73FyrEF6t5si7n36MF4wQUfI36Kr', 'Hostess hours file here too']
+  ].forEach(function (r) { sh.appendRow(r); });
+  sh.setColumnWidth(2, 420);
+  return sh;
+}
+
+/**
+ * The month folder a document belongs in, matching each folder set's own
+ * convention: "8. August 2026" style is matched or created in place; a year
+ * folder is used when one exists; the 2026 year-less commission months
+ * ("8. August") are matched by month name; and from 2027 on, a year-less tree
+ * gets a year folder created automatically with months inside it.
+ */
+function officeMonthParent_(base, d) {
+  var label = Utilities.formatDate(d, tz_(), 'MMMM yyyy');
+  var hit = childContaining_(base, label);
+  if (hit) return hit;
+  var yearName = Utilities.formatDate(d, tz_(), 'yyyy');
+  var numbered = (d.getMonth() + 1) + '. ' + label;
+  var yr = existingChild_(base, yearName);
+  if (yr) return childContaining_(yr, label) || childFolder_(yr, numbered);
+  if (yearName === LEGACY_YEARLESS_YEAR) {
+    var monthOnly = Utilities.formatDate(d, tz_(), 'MMMM');
+    try {
+      var it = base.getFolders();
+      while (it.hasNext()) {
+        var f = it.next(), nm = String(f.getName());
+        if (!/\d{4}/.test(nm) && nm.toLowerCase().indexOf(monthOnly.toLowerCase()) !== -1) return f;
+      }
+    } catch (e) {}
+    // Created in the siblings' own style, so each tree stays uniform.
+    return monthChildStyle_(base) === 'yearless'
+      ? childFolder_(base, (d.getMonth() + 1) + '. ' + monthOnly)
+      : childFolder_(base, numbered);
+  }
+  if (monthChildStyle_(base) === 'yearless') {
+    return childFolder_(childFolder_(base, yearName), numbered);
+  }
+  return childFolder_(base, numbered);
+}
+
+var MONTH_NAME_RE = /(january|february|march|april|may|june|july|august|september|october|november|december)/i;
+
+/** 'yeared' when month folders carry a year, 'yearless' when not, '' when neither. */
+function monthChildStyle_(base) {
+  try {
+    var style = '';
+    var it = base.getFolders();
+    while (it.hasNext()) {
+      var nm = String(it.next().getName());
+      if (!MONTH_NAME_RE.test(nm)) continue;
+      if (/\d{4}/.test(nm)) return 'yeared';
+      style = 'yearless';
+    }
+    return style;
+  } catch (e) { return ''; }
+}
+
+/** File name in the shop's convention for each document type. */
+function officeFileName_(docType, periodText, index, total, origName) {
+  var base;
+  if (docType === 'expense') base = periodText;                       // "September 2026"
+  else if (docType === 'hostess') base = 'Hostess Hours Report ' + periodText;
+  else base = periodText;                                             // "(September 7 - September 13)"
+  if (total > 1) base += ' - ' + (index + 1);
+  var ext = extOf_(origName);
+  return ext ? base + '.' + ext : base;
+}
+
+/** Never overwrites or skips: an existing name gets " (2)", " (3)", … */
+function uniqueName_(folder, name) {
+  if (!fileExists_(folder, name)) return name;
+  var m = name.match(/^(.*?)(\.[A-Za-z0-9]+)?$/);
+  var stem = m[1], ext = m[2] || '';
+  for (var i = 2; i < 50; i++) {
+    var candidate = stem + ' (' + i + ')' + ext;
+    if (!fileExists_(folder, candidate)) return candidate;
+  }
+  return stem + ' ' + Date.now() + ext;
+}
+
+function makeOfficeRef_(now) {
+  var d = Utilities.formatDate(now, tz_(), 'yyyyMMdd');
+  var sh = ensureOfficeSheet_();
+  var existing = {};
+  if (sh.getLastRow() > 1) {
+    sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues().forEach(function (r) { existing[String(r[0])] = true; });
+  }
+  var ref;
+  do { ref = 'OD-' + d + '-' + randomTail_(); } while (existing[ref]);
+  return ref;
+}
+
+function ensureOfficeSheet_() {
+  var ss = getSpreadsheet_();
+  var sh = ss.getSheetByName('Office Documents');
+  if (sh) return sh;
+  sh = ss.insertSheet('Office Documents');
+  sh.appendRow(OFFICE_HEADERS);
+  sh.getRange(1, 1, 1, OFFICE_HEADERS.length).setFontWeight('bold');
+  sh.setFrozenRows(1);
+  return sh;
+}
+
+function saveOfficeRow_(ref, now, who, typeLabel, location, periodText, names, destUrl) {
+  try {
+    var sh = ensureOfficeSheet_();
+    sh.appendRow([
+      cell_(ref), Utilities.formatDate(now, tz_(), 'yyyy-MM-dd HH:mm:ss'), cell_(who),
+      cell_(typeLabel), cell_(location || 'ALL'), cell_(periodText),
+      cell_(names.join(', ')), destUrl, 'FILED'
+    ]);
+  } catch (e) { logError_(e); }
+}
+
+function sendOfficeEmail_(ref, who, typeLabel, location, periodText, names, target) {
+  try {
+    var subject = 'Office Document Filed – ' + typeLabel + (location ? ' – ' + location : '') + ' – ' + periodText;
+    var url = target.getUrl();
+    var html =
+      '<div style="font-family:-apple-system,Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto">' +
+      '<div style="font-family:Georgia,serif;font-size:24px;font-weight:800;letter-spacing:1px">BARBER &amp; CO</div>' +
+      '<div style="color:#b8912a;font-style:italic;margin-bottom:16px">Miami</div>' +
+      '<div style="background:#f0f7f1;border:1px solid #cfe5d3;border-radius:10px;padding:14px 18px">' +
+      '<p style="margin:0 0 6px"><strong>&#9989; ' + esc_(typeLabel) + ' filed to Drive</strong></p>' +
+      '<p style="margin:0;color:#444">' + esc_(who) + ' &middot; ' + (location ? esc_(location) + ' &middot; ' : '') + esc_(periodText) + '</p>' +
+      '</div>' +
+      '<p style="color:#444">Saved in <strong>' + esc_(target.getName()) + '</strong>:</p>' +
+      '<ul>' + names.map(function (n) { return '<li>' + esc_(n) + '</li>'; }).join('') + '</ul>' +
+      '<p><a href="' + url + '" style="background:#1f8a4c;color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none">Open folder</a></p>' +
+      '<p style="color:#888;font-size:12px">Reference ' + esc_(ref) + ' &middot; No action needed — this was filed automatically.</p></div>';
+    MailApp.sendEmail({
+      to: cfg('OFFICE_EMAIL'),
+      subject: subject,
+      body: typeLabel + ' filed by ' + who + ' (' + periodText + '). Files: ' + names.join(', ') + '\n' + url,
+      htmlBody: html
+    });
+  } catch (e) { logError_(e); }
 }
 
 /** Spreadsheet menu: review helpers for admins. */
