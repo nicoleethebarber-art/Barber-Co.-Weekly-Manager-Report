@@ -1625,10 +1625,52 @@
     loadDash();
   }
 
-  function dashRow(okFlag, label, detail) {
+  function dashRow(okFlag, label, detail, ref) {
     return '<div style="display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid var(--line)">' +
-      '<span>' + (okFlag ? "✅" : "❌") + "</span><div><b>" + label + "</b>" +
-      (detail ? '<div style="color:var(--muted);font-size:12.5px">' + detail + "</div>" : "") + "</div></div>";
+      '<span>' + (okFlag ? "✅" : "❌") + '</span><div style="flex:1"><b>' + label + "</b>" +
+      (detail ? '<div style="color:var(--muted);font-size:12.5px">' + detail + "</div>" : "") + "</div>" +
+      (ref ? '<button type="button" class="dview" data-ref="' + escapeHtml(ref) + '" style="background:none;border:1px solid var(--mustard);color:var(--mustard);border-radius:8px;padding:5px 11px;font-weight:700;cursor:pointer;white-space:nowrap;font-size:12.5px">View</button>' : "") +
+      "</div>";
+  }
+
+  // Opens one report and shows every answer inside it.
+  function dashDetail(ref) {
+    var body = $("#dashBody");
+    body.innerHTML = '<p style="color:var(--muted);text-align:center">Opening ' + escapeHtml(ref) + "…</p>";
+    fetch(ENDPOINT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "reportDetail", ref: ref, token: session && session.token, submissionId: uuid() }) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (!res || res.status !== "success" || !res.detail) {
+          window.alert((res && res.message) || "Could not open that report.");
+          loadDash(); return;
+        }
+        var d = res.detail, h = "";
+        h += '<button type="button" id="dashDetailBack" style="background:none;border:none;color:var(--mustard);font-weight:700;cursor:pointer;padding:0 0 10px;font-size:14px">← Back to dashboard</button>';
+        h += '<div class="group"><h3>' + escapeHtml(d.title) + "</h3>";
+        h += '<p style="color:var(--muted);font-size:13px;margin:4px 0 2px">' + escapeHtml(d.ref) + " · submitted by " + escapeHtml(d.by) + (d.at ? " · " + escapeHtml(d.at) : "") + "</p>";
+        var good = /APPROVED|COMPLETED|FILED|Submitted/i.test(d.status || "");
+        h += '<p style="font-weight:700;font-size:13px;margin:2px 0;color:' + (good ? "var(--ok)" : "var(--no)") + '">' + escapeHtml(d.status || "") + "</p>";
+        if (d.summary) h += '<p style="font-size:13.5px;margin:4px 0 0">' + escapeHtml(d.summary) + "</p>";
+        h += "</div>";
+        h += '<div class="group"><h3>📝 Everything in this report</h3>';
+        if (!d.rows || !d.rows.length) h += '<p class="hint">No saved answers found for this one.</p>';
+        (d.rows || []).forEach(function (row) {
+          var pad = Math.min(row.sub || 0, 3) * 14;
+          if (row.head) {
+            h += '<div style="padding:9px 0 3px ' + pad + 'px;font-weight:800;color:var(--mustard);font-size:12.5px;text-transform:uppercase;letter-spacing:.4px">' + escapeHtml(row.label) + "</div>";
+          } else {
+            h += '<div style="display:flex;gap:10px;justify-content:space-between;padding:5px 0 5px ' + pad + 'px;border-bottom:1px solid var(--line);font-size:13.5px">' +
+              '<span style="color:var(--muted)">' + escapeHtml(row.label) + "</span>" +
+              '<span style="text-align:right;max-width:62%;word-break:break-word"><b>' + escapeHtml(row.value) + "</b></span></div>";
+          }
+        });
+        h += "</div>";
+        body.innerHTML = h;
+        $("#dashDetailBack").addEventListener("click", loadDash);
+        body.scrollIntoView({ behavior: "smooth", block: "start" });
+      })
+      .catch(function () { window.alert("Couldn't reach the server. Try again."); loadDash(); });
   }
 
   function dashCleanup() {
@@ -1663,32 +1705,35 @@
         h += '<div class="group"><h3>📋 Manager reports — last week</h3>';
         AREA_SHOPS.forEach(function (shop) {
           var r = d.reports.lastWeek[shop];
-          h += dashRow(!!r, shop, r ? escapeHtml(r.ref) + " · " + escapeHtml(r.status) : "No report for last week yet — chase it");
+          h += dashRow(!!r, shop, r ? escapeHtml(r.ref) + " · " + escapeHtml(r.status) : "No report for last week yet — chase it", r ? r.ref : null);
         });
         h += "</div>";
         h += '<div class="group"><h3>⏳ Waiting on your approval (' + d.reports.pending.length + ")</h3>";
         if (!d.reports.pending.length) h += '<p class="hint">Nothing pending. 🎉</p>';
         d.reports.pending.forEach(function (p) {
-          h += dashRow(false, escapeHtml(p.ref), escapeHtml(p.manager + " · " + p.location + " · " + p.week) + " — approve from its email, or the sheet menu");
+          h += dashRow(false, escapeHtml(p.ref), escapeHtml(p.manager + " · " + p.location + " · " + p.week) + " — approve from its email, or the sheet menu", p.ref);
         });
         h += '<button type="button" id="dashCleanup" style="width:100%;margin-top:8px;background:none;border:1.5px dashed var(--no);color:var(--no);border-radius:10px;padding:11px;font-weight:700;cursor:pointer">🗑 Delete old unapproved reports</button>';
         h += "</div>";
         h += '<div class="group"><h3>🧭 Dario this week</h3>' +
-          dashRow(!!d.dario.tuesday, "Tuesday Check", d.dario.tuesday ? escapeHtml(d.dario.tuesday.summary) : "Not submitted yet") +
-          dashRow(!!d.dario.friday, "Friday Sales Check", d.dario.friday ? escapeHtml(d.dario.friday.summary) : "Not submitted yet") + "</div>";
+          dashRow(!!d.dario.tuesday, "Tuesday Check", d.dario.tuesday ? escapeHtml(d.dario.tuesday.summary) : "Not submitted yet", d.dario.tuesday ? d.dario.tuesday.ref : null) +
+          dashRow(!!d.dario.friday, "Friday Sales Check", d.dario.friday ? escapeHtml(d.dario.friday.summary) : "Not submitted yet", d.dario.friday ? d.dario.friday.ref : null) + "</div>";
         h += '<div class="group"><h3>🗓️ Krystal this week</h3>' +
-          dashRow(!!d.krystal.payroll, "Payroll (Sun–Mon)", d.krystal.payroll ? escapeHtml(d.krystal.payroll.summary) : "Not submitted yet") +
-          dashRow(!!d.krystal.tuesday, "Tuesday check-in (sales + week " + d.weekOfMonth + " duties)", d.krystal.tuesday ? escapeHtml(d.krystal.tuesday.summary) : "Not submitted yet") +
+          dashRow(!!d.krystal.payroll, "Payroll (Sun–Mon)", d.krystal.payroll ? escapeHtml(d.krystal.payroll.summary) : "Not submitted yet", d.krystal.payroll ? d.krystal.payroll.ref : null) +
+          dashRow(!!d.krystal.tuesday, "Tuesday check-in (sales + week " + d.weekOfMonth + " duties)", d.krystal.tuesday ? escapeHtml(d.krystal.tuesday.summary) : "Not submitted yet", d.krystal.tuesday ? d.krystal.tuesday.ref : null) +
           "</div>";
         h += '<div class="group"><h3>🗂️ Office documents this week (' + d.office.length + ")</h3>";
         if (!d.office.length) h += '<p class="hint">None filed yet this week.</p>';
         d.office.forEach(function (o) {
-          h += dashRow(true, escapeHtml(o.type + (o.location && o.location !== "ALL" ? " · " + o.location : "")), escapeHtml(o.period + " · by " + o.by));
+          h += dashRow(true, escapeHtml(o.type + (o.location && o.location !== "ALL" ? " · " + o.location : "")), escapeHtml(o.period + " · by " + o.by), o.ref || null);
         });
         h += "</div>";
         body.innerHTML = h;
         var cbtn = $("#dashCleanup");
         if (cbtn) cbtn.addEventListener("click", dashCleanup);
+        Array.prototype.forEach.call(body.querySelectorAll(".dview"), function (b) {
+          b.addEventListener("click", function () { dashDetail(b.getAttribute("data-ref")); });
+        });
       })
       .catch(function () { body.innerHTML = '<p style="color:var(--warn)">Couldn\u2019t reach the server. Tap Refresh to retry.</p>'; });
   }
