@@ -1043,7 +1043,7 @@
     if (session.name) {
       form.elements.managerName.value = session.name;
       form.elements.managerName.readOnly = true;
-      form.elements.managerName.style.background = "#f2efe9";
+      form.elements.managerName.style.background = "#26221a";
     }
     if (session.location) {
       var sel = form.elements.storeLocation;
