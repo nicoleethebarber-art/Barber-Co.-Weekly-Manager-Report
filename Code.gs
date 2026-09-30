@@ -165,7 +165,7 @@ function doGet(e) {
   var p = (e && e.parameter) || {};
   // One-click approve / reject straight from the notification email.
   if (p.a === 'approve' || p.a === 'reject') return handleDecision_(p);
-  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v11 — one-page Tuesday check-ins' });
+  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v12 — dashboard cleanup button' });
 }
 
 // ---- Signed approval links -------------------------------------------------
@@ -284,6 +284,9 @@ function doPost(e) {
 
     // 2d-quinquies) ADMIN DASHBOARD — read-only status overview for Nicole.
     if (data.action === 'dashboard') return handleDashboard_(data, mgr, isAdmin);
+
+    // 2d-sexies) ADMIN CLEANUP — delete old unapproved reports (dashboard button).
+    if (data.action === 'cleanupOld') return handleCleanupOld_(data, mgr, isAdmin);
 
     // 2e) SECURITY SCREENING of attachments (type / size / count / duplicates)
     var screen = screenFiles_(data);
@@ -2311,16 +2314,10 @@ function menuRequestChanges() {
  * previous backend logged by mistake. Only deletes rows with no manager name
  * AND stored data that is a verify request, so real reports are never touched.
  */
-/**
- * Menu: DELETE every report submitted before this week's Monday that was
- * never approved (status not APPROVED/COMPLETED). Asks for confirmation
- * with the count first; the deletion is permanent, and an audit entry
- * records the removed references.
- */
-function menuDeleteOldUnapproved() {
-  var ui = SpreadsheetApp.getUi();
+/** Rows of reports submitted before this week that were never approved. */
+function oldUnapprovedTargets_() {
   var sheet = getSpreadsheet_().getSheetByName('Responses');
-  if (!sheet || sheet.getLastRow() < 2) { ui.alert('No reports found.'); return; }
+  if (!sheet || sheet.getLastRow() < 2) return { sheet: null, targets: [] };
   var monday = new Date(); monday.setHours(0, 0, 0, 0);
   monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
   var col = reviewColumn_(sheet);
@@ -2332,15 +2329,41 @@ function menuDeleteOldUnapproved() {
     var when = cellDate_(r[1]);
     if (when && when < monday) targets.push({ row: i + 2, ref: String(r[0] || '') });
   });
-  if (!targets.length) { ui.alert('Nothing to delete — no old unapproved reports.'); return; }
+  return { sheet: sheet, targets: targets };
+}
+
+function deleteOldUnapproved_(found) {
+  for (var i = found.targets.length - 1; i >= 0; i--) found.sheet.deleteRow(found.targets[i].row);
+  audit_('OLD UNAPPROVED DELETED', { fileCount: found.targets.length, status: 'CLEANUP',
+    detail: 'Refs: ' + found.targets.map(function (t) { return t.ref; }).join(', ').slice(0, 900) });
+}
+
+/** Dashboard button: admin-only deletion of old unapproved reports. */
+function handleCleanupOld_(data, mgr, isAdmin) {
+  if (!isAdmin) return json({ status: 'error', message: 'Admins only.' });
+  var found = oldUnapprovedTargets_();
+  if (!found.sheet) return json({ status: 'error', message: 'No reports found.' });
+  if (!found.targets.length) return json({ status: 'success', deleted: 0 });
+  var refs = found.targets.map(function (t) { return t.ref; });
+  deleteOldUnapproved_(found);
+  return json({ status: 'success', deleted: refs.length, refs: refs });
+}
+
+/**
+ * Menu: DELETE every report submitted before this week's Monday that was
+ * never approved. Same logic as the dashboard button.
+ */
+function menuDeleteOldUnapproved() {
+  var ui = SpreadsheetApp.getUi();
+  var found = oldUnapprovedTargets_();
+  if (!found.sheet) { ui.alert('No reports found.'); return; }
+  if (!found.targets.length) { ui.alert('Nothing to delete \u2014 no old unapproved reports.'); return; }
   var ok = ui.alert('Delete old unapproved reports',
-    targets.length + ' report(s) from before this week were never approved.\n\n' +
+    found.targets.length + ' report(s) from before this week were never approved.\n\n' +
     'DELETE them permanently from the sheet? This cannot be undone.', ui.ButtonSet.YES_NO);
   if (ok !== ui.Button.YES) return;
-  for (var i = targets.length - 1; i >= 0; i--) sheet.deleteRow(targets[i].row);
-  audit_('OLD UNAPPROVED DELETED', { fileCount: targets.length, status: 'CLEANUP',
-    detail: 'Refs: ' + targets.map(function (t) { return t.ref; }).join(', ').slice(0, 900) });
-  ui.alert('Done — ' + targets.length + ' old unapproved report(s) deleted.');
+  deleteOldUnapproved_(found);
+  ui.alert('Done \u2014 ' + found.targets.length + ' old unapproved report(s) deleted.');
 }
 function menuCleanupJunkRows() {
   var ui = SpreadsheetApp.getUi();

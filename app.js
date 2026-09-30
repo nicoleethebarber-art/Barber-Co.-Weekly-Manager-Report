@@ -1631,6 +1631,23 @@
       (detail ? '<div style="color:var(--muted);font-size:12.5px">' + detail + "</div>" : "") + "</div></div>";
   }
 
+  function dashCleanup() {
+    if (!window.confirm("Delete ALL reports from before this week that were never approved?\n\nApproved reports are kept. This cannot be undone.")) return;
+    var body = $("#dashBody");
+    fetch(ENDPOINT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "cleanupOld", token: session && session.token, submissionId: uuid() }) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        if (res && res.status === "success") {
+          window.alert(res.deleted ? "Deleted " + res.deleted + " old unapproved report(s)." : "Nothing to delete \u2014 no old unapproved reports.");
+          loadDash();
+        } else {
+          window.alert((res && res.message) || "Could not delete. Try again.");
+        }
+      })
+      .catch(function () { window.alert("Couldn't reach the server. Try again."); });
+  }
+
   function loadDash() {
     var body = $("#dashBody");
     body.innerHTML = '<p style="color:var(--muted);text-align:center">Loading…</p>';
@@ -1654,6 +1671,7 @@
         d.reports.pending.forEach(function (p) {
           h += dashRow(false, escapeHtml(p.ref), escapeHtml(p.manager + " · " + p.location + " · " + p.week) + " — approve from its email, or the sheet menu");
         });
+        h += '<button type="button" id="dashCleanup" style="width:100%;margin-top:8px;background:none;border:1.5px dashed var(--no);color:var(--no);border-radius:10px;padding:11px;font-weight:700;cursor:pointer">🗑 Delete old unapproved reports</button>';
         h += "</div>";
         h += '<div class="group"><h3>🧭 Dario this week</h3>' +
           dashRow(!!d.dario.tuesday, "Tuesday Check", d.dario.tuesday ? escapeHtml(d.dario.tuesday.summary) : "Not submitted yet") +
@@ -1669,6 +1687,8 @@
         });
         h += "</div>";
         body.innerHTML = h;
+        var cbtn = $("#dashCleanup");
+        if (cbtn) cbtn.addEventListener("click", dashCleanup);
       })
       .catch(function () { body.innerHTML = '<p style="color:var(--warn)">Couldn\u2019t reach the server. Tap Refresh to retry.</p>'; });
   }
