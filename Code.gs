@@ -165,7 +165,7 @@ function doGet(e) {
   var p = (e && e.parameter) || {};
   // One-click approve / reject straight from the notification email.
   if (p.a === 'approve' || p.a === 'reject') return handleDecision_(p);
-  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v11 — one-page Tuesday check-ins' });
+  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v12 — dashboard cleanup button' });
 }
 
 // ---- Signed approval links -------------------------------------------------
@@ -284,6 +284,9 @@ function doPost(e) {
 
     // 2d-quinquies) ADMIN DASHBOARD — read-only status overview for Nicole.
     if (data.action === 'dashboard') return handleDashboard_(data, mgr, isAdmin);
+
+    // 2d-sexies) ADMIN CLEANUP — delete old unapproved reports (dashboard button).
+    if (data.action === 'cleanupOld') return handleCleanupOld_(data, mgr, isAdmin);
 
     // 2e) SECURITY SCREENING of attachments (type / size / count / duplicates)
     var screen = screenFiles_(data);
@@ -1997,6 +2000,15 @@ function ensureKrystalSheet_() {
   return sh;
 }
 
+/** A sheet cell's timestamp as a Date — handles real Date cells and text. */
+function cellDate_(v) {
+  if (v instanceof Date) return isNaN(v.getTime()) ? null : v;
+  var d = new Date(String(v).replace(' ', 'T'));
+  if (!isNaN(d.getTime())) return d;
+  d = new Date(String(v));
+  return isNaN(d.getTime()) ? null : d;
+}
+
 /** Which week of the month a date falls in (1-5). */
 function weekOfMonth_(d) { return Math.ceil(d.getDate() / 7); }
 
@@ -2170,8 +2182,8 @@ function handleDashboard_(data, mgr, isAdmin) {
         var ref = String(r[0] || ''); if (!ref) return;
         var loc = String(r[3] || ''), wkS = parseYmd_(String(r[4] || '')), status = String(r[col - 1] || '');
         if (/^PENDING/.test(status)) {
-          var subAt = new Date(String(r[1]).replace(' ', 'T'));
-          if (!isNaN(subAt.getTime()) && subAt >= monday) {
+          var subAt = cellDate_(r[1]);
+          if (subAt && subAt >= monday) {
             reports.pending.push({ ref: ref, manager: String(r[2] || ''), location: loc, week: String(r[4] || '') + ' to ' + String(r[5] || '') });
           }
         }
@@ -2192,8 +2204,8 @@ function handleDashboard_(data, mgr, isAdmin) {
       if (!sh || sh.getLastRow() < 2) return out;
       var rows = sh.getRange(2, 1, sh.getLastRow() - 1, 5).getValues();
       rows.forEach(function (r) {
-        var when = new Date(String(r[1]).replace(' ', 'T'));
-        if (!isNaN(when.getTime()) && when >= monday) out[String(r[2])] = { at: String(r[1]), summary: String(r[4] || '') };
+        var when = cellDate_(r[1]);
+        if (when && when >= monday) out[String(r[2])] = { at: String(r[1]), summary: String(r[4] || '') };
       });
       return out;
     }
@@ -2206,8 +2218,8 @@ function handleDashboard_(data, mgr, isAdmin) {
     if (osh && osh.getLastRow() > 1) {
       var orows = osh.getRange(2, 1, osh.getLastRow() - 1, 6).getValues();
       orows.forEach(function (r) {
-        var when = new Date(String(r[1]).replace(' ', 'T'));
-        if (!isNaN(when.getTime()) && when >= monday) office.push({ type: String(r[3] || ''), location: String(r[4] || ''), period: String(r[5] || ''), by: String(r[2] || '') });
+        var when = cellDate_(r[1]);
+        if (when && when >= monday) office.push({ type: String(r[3] || ''), location: String(r[4] || ''), period: String(r[5] || ''), by: String(r[2] || '') });
       });
     }
 
@@ -2302,16 +2314,10 @@ function menuRequestChanges() {
  * previous backend logged by mistake. Only deletes rows with no manager name
  * AND stored data that is a verify request, so real reports are never touched.
  */
-/**
- * Menu: DELETE every report submitted before this week's Monday that was
- * never approved (status not APPROVED/COMPLETED). Asks for confirmation
- * with the count first; the deletion is permanent, and an audit entry
- * records the removed references.
- */
-function menuDeleteOldUnapproved() {
-  var ui = SpreadsheetApp.getUi();
+/** Rows of reports submitted before this week that were never approved. */
+function oldUnapprovedTargets_() {
   var sheet = getSpreadsheet_().getSheetByName('Responses');
-  if (!sheet || sheet.getLastRow() < 2) { ui.alert('No reports found.'); return; }
+  if (!sheet || sheet.getLastRow() < 2) return { sheet: null, targets: [] };
   var monday = new Date(); monday.setHours(0, 0, 0, 0);
   monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
   var col = reviewColumn_(sheet);
@@ -2320,18 +2326,44 @@ function menuDeleteOldUnapproved() {
   rows.forEach(function (r, i) {
     var status = String(r[col - 1] || '');
     if (/^(APPROVED|COMPLETED)/.test(status)) return; // approved reports are kept
-    var when = new Date(String(r[1]).replace(' ', 'T'));
-    if (!isNaN(when.getTime()) && when < monday) targets.push({ row: i + 2, ref: String(r[0] || '') });
+    var when = cellDate_(r[1]);
+    if (when && when < monday) targets.push({ row: i + 2, ref: String(r[0] || '') });
   });
-  if (!targets.length) { ui.alert('Nothing to delete — no old unapproved reports.'); return; }
+  return { sheet: sheet, targets: targets };
+}
+
+function deleteOldUnapproved_(found) {
+  for (var i = found.targets.length - 1; i >= 0; i--) found.sheet.deleteRow(found.targets[i].row);
+  audit_('OLD UNAPPROVED DELETED', { fileCount: found.targets.length, status: 'CLEANUP',
+    detail: 'Refs: ' + found.targets.map(function (t) { return t.ref; }).join(', ').slice(0, 900) });
+}
+
+/** Dashboard button: admin-only deletion of old unapproved reports. */
+function handleCleanupOld_(data, mgr, isAdmin) {
+  if (!isAdmin) return json({ status: 'error', message: 'Admins only.' });
+  var found = oldUnapprovedTargets_();
+  if (!found.sheet) return json({ status: 'error', message: 'No reports found.' });
+  if (!found.targets.length) return json({ status: 'success', deleted: 0 });
+  var refs = found.targets.map(function (t) { return t.ref; });
+  deleteOldUnapproved_(found);
+  return json({ status: 'success', deleted: refs.length, refs: refs });
+}
+
+/**
+ * Menu: DELETE every report submitted before this week's Monday that was
+ * never approved. Same logic as the dashboard button.
+ */
+function menuDeleteOldUnapproved() {
+  var ui = SpreadsheetApp.getUi();
+  var found = oldUnapprovedTargets_();
+  if (!found.sheet) { ui.alert('No reports found.'); return; }
+  if (!found.targets.length) { ui.alert('Nothing to delete \u2014 no old unapproved reports.'); return; }
   var ok = ui.alert('Delete old unapproved reports',
-    targets.length + ' report(s) from before this week were never approved.\n\n' +
+    found.targets.length + ' report(s) from before this week were never approved.\n\n' +
     'DELETE them permanently from the sheet? This cannot be undone.', ui.ButtonSet.YES_NO);
   if (ok !== ui.Button.YES) return;
-  for (var i = targets.length - 1; i >= 0; i--) sheet.deleteRow(targets[i].row);
-  audit_('OLD UNAPPROVED DELETED', { fileCount: targets.length, status: 'CLEANUP',
-    detail: 'Refs: ' + targets.map(function (t) { return t.ref; }).join(', ').slice(0, 900) });
-  ui.alert('Done — ' + targets.length + ' old unapproved report(s) deleted.');
+  deleteOldUnapproved_(found);
+  ui.alert('Done \u2014 ' + found.targets.length + ' old unapproved report(s) deleted.');
 }
 function menuCleanupJunkRows() {
   var ui = SpreadsheetApp.getUi();
