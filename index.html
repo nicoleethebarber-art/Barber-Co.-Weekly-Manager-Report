@@ -6,31 +6,33 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
 <meta http-equiv="Pragma" content="no-cache" />
 <meta http-equiv="Expires" content="0" />
+<meta name="theme-color" content="#0c0c0c" />
 <title>Barber &amp; Co. Weekly Manager Report</title>
 <style>
   :root{
-    --black:#111;--ink:#1a1a1a;--white:#fff;--gold:#d4af37;--mustard:#e0b73f;
-    --gold-dark:#b8912a;--cream:#fbf6e6;--panel:#faf8f4;--line:#e2ddd3;--muted:#63625e;
-    --ok:#1f8a4c;--no:#b23023;--na:#6a6a6a;--warn:#a3271a;
+    --black:#111;--ink:#f0eadc;--white:#fff;--gold:#d4af37;--mustard:#cf9b52;
+    --gold-dark:#caa435;--cream:#26221a;--panel:#1d1c19;--line:#3a3831;--muted:#a8a297;
+    --ok:#34b06a;--no:#e05a4b;--na:#9a9a9a;--warn:#e0604f;
+    --bg:#0c0c0c;--card:#171614;--field:#211f1c;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html{scroll-behavior:smooth}
-  body{margin:0;background:#f2f2f2;color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.45;font-size:16px}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;line-height:1.45;font-size:16px}
   .wrap{max-width:780px;margin:0 auto;padding:0 14px 90px}
 
   /* Progress bar */
-  .progress-wrap{position:sticky;top:0;z-index:60;background:var(--black);padding:10px 14px}
+  .progress-wrap{position:sticky;top:0;z-index:60;background:#000;border-bottom:1px solid #262420;padding:10px 14px}
   .progress-inner{max-width:780px;margin:0 auto}
   .progress-label{color:#fff;font-size:12px;letter-spacing:.4px;display:flex;justify-content:space-between;margin-bottom:6px}
   .progress-label b{color:var(--mustard)}
   .progress-track{height:8px;background:#333;border-radius:20px;overflow:hidden}
   .progress-fill{height:100%;width:0;background:linear-gradient(90deg,var(--gold),var(--mustard));transition:width .35s ease}
 
-  .card{background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 3px 16px rgba(0,0,0,.07);margin-top:16px}
+  .card{background:var(--card);border-radius:16px;overflow:hidden;box-shadow:0 3px 18px rgba(0,0,0,.55);border:1px solid #262420;margin-top:16px}
   .brand{text-align:center;padding:26px 20px 4px}
   .brand img{max-width:230px;height:auto;display:block;margin:0 auto}
-  .brand .name{font-family:Georgia,"Times New Roman",serif;font-weight:800;letter-spacing:1.5px;font-size:clamp(28px,7.5vw,44px);line-height:.92;color:var(--black)}
-  .brand .miami{font-family:"Brush Script MT","Snell Roundhand",cursive;color:var(--gold-dark);font-size:clamp(26px,7.5vw,44px);margin-top:-4px}
+  .brand .name{font-family:Georgia,"Times New Roman",serif;font-weight:800;letter-spacing:1.5px;font-size:clamp(28px,7.5vw,44px);line-height:.92;color:#fff}
+  .brand .miami{font-family:"Brush Script MT","Snell Roundhand",cursive;color:var(--gold);font-size:clamp(22px,5.5vw,32px);margin-top:0}
   .title-bar{background:var(--mustard);color:var(--black);text-align:center;font-weight:800;letter-spacing:2px;text-transform:uppercase;padding:13px;font-size:14px}
   .subtitle{text-align:center;color:var(--muted);font-size:13px;padding:10px 16px 0}
 
@@ -53,7 +55,7 @@
   label{display:block;font-weight:600;font-size:14px;margin:0 0 6px}
   .field{margin-bottom:15px}.field:last-child{margin-bottom:0}
   input[type=text],input[type=email],input[type=tel],input[type=number],input[type=date],input[type=time],textarea,select{
-    width:100%;padding:13px 12px;font-size:16px;border:1.5px solid var(--line);border-radius:10px;background:#fff;color:var(--ink);outline:none;font-family:inherit}
+    width:100%;padding:13px 12px;font-size:16px;border:1.5px solid var(--line);border-radius:10px;background:var(--field);color:var(--ink);outline:none;font-family:inherit}
   textarea{min-height:82px;resize:vertical}
   input:focus,textarea:focus,select:focus{border-color:var(--gold-dark);box-shadow:0 0 0 3px rgba(224,183,63,.25)}
   select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath fill='%23888' d='M1 1l5 5 5-5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:36px}
@@ -72,34 +74,34 @@
   .task{border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px;background:var(--panel)}
   .task-title{font-weight:700;font-size:15px;margin-bottom:10px}
   .status-opts{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
-  .status-opts label{display:flex;align-items:center;justify-content:center;gap:5px;margin:0;padding:12px 4px;border:1.5px solid var(--line);border-radius:10px;background:#fff;font-size:12.5px;font-weight:700;cursor:pointer;text-align:center;min-height:46px}
+  .status-opts label{display:flex;align-items:center;justify-content:center;gap:5px;margin:0;padding:12px 4px;border:1.5px solid var(--line);border-radius:10px;background:var(--field);font-size:12.5px;font-weight:700;cursor:pointer;text-align:center;min-height:46px}
   .status-opts input{position:absolute;opacity:0;pointer-events:none}
-  .status-opts label.sel-ok{border-color:var(--ok);background:#eafaf0;color:var(--ok)}
-  .status-opts label.sel-no{border-color:var(--no);background:#fdecea;color:var(--no)}
-  .status-opts label.sel-na{border-color:var(--na);background:#f0f0f0;color:#444}
+  .status-opts label.sel-ok{border-color:var(--ok);background:rgba(52,176,106,.14);color:var(--ok)}
+  .status-opts label.sel-no{border-color:var(--no);background:rgba(224,90,75,.14);color:var(--no)}
+  .status-opts label.sel-na{border-color:var(--na);background:#2a2a2a;color:#ccc}
   .explain-box{display:none}
   .explain-box.show{display:block}
 
   /* Uploader */
   .uploader{margin-top:10px}
-  .upload-btn{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1.5px dashed var(--gold-dark);color:var(--gold-dark);font-weight:700;padding:12px 14px;border-radius:10px;cursor:pointer;font-size:13.5px;min-height:46px}
+  .upload-btn{display:inline-flex;align-items:center;gap:8px;background:var(--field);border:1.5px dashed var(--gold-dark);color:var(--gold-dark);font-weight:700;padding:12px 14px;border-radius:10px;cursor:pointer;font-size:13.5px;min-height:46px}
   .upload-btn:active{background:var(--cream)}
   .upload-input{display:none}
   .thumbs{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
-  .thumb{position:relative;width:76px;height:76px;border-radius:9px;overflow:hidden;border:1px solid var(--line);background:#eee}
+  .thumb{position:relative;width:76px;height:76px;border-radius:9px;overflow:hidden;border:1px solid var(--line);background:#2a2a2a}
   .thumb img{width:100%;height:100%;object-fit:cover}
-  .thumb .doc{display:flex;align-items:center;justify-content:center;height:100%;font-size:10.5px;text-align:center;padding:4px;color:#555;word-break:break-word}
+  .thumb .doc{display:flex;align-items:center;justify-content:center;height:100%;font-size:10.5px;text-align:center;padding:4px;color:#bbb;word-break:break-word}
   .thumb .x{position:absolute;top:2px;right:2px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,.7);color:#fff;border:none;font-size:14px;line-height:1;cursor:pointer}
   .thumb .fn{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.55);color:#fff;font-size:9px;padding:1px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .upload-meta{font-size:11.5px;color:var(--muted);margin-top:6px}
 
   /* Repeatable rows */
   .rows{display:flex;flex-direction:column;gap:12px}
-  .row-item{border:1px solid var(--line);border-radius:12px;padding:16px 14px 8px;background:#fff;position:relative}
+  .row-item{border:1px solid var(--line);border-radius:12px;padding:16px 14px 8px;background:var(--card);position:relative}
   .row-num{position:absolute;top:-10px;left:14px;background:var(--mustard);color:var(--black);font-size:11px;font-weight:800;padding:2px 9px;border-radius:20px}
   .row-remove{position:absolute;top:8px;right:8px;background:none;border:none;color:var(--warn);font-size:24px;line-height:1;cursor:pointer;padding:2px 6px}
   .row-grid{display:grid;gap:10px}
-  .add-btn{margin:8px 0 4px;background:#fff;border:1.5px dashed var(--gold-dark);color:var(--gold-dark);font-weight:700;padding:14px;width:100%;border-radius:11px;cursor:pointer;font-size:14px;min-height:48px}
+  .add-btn{margin:8px 0 4px;background:var(--field);border:1.5px dashed var(--gold-dark);color:var(--gold-dark);font-weight:700;padding:14px;width:100%;border-radius:11px;cursor:pointer;font-size:14px;min-height:48px}
   .add-btn:active{background:var(--cream)}
   .mini-label{font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px;display:block}
 
@@ -116,7 +118,7 @@
 
   /* Yes/No */
   .yesno{display:inline-flex;border:1.5px solid var(--line);border-radius:10px;overflow:hidden}
-  .yesno label{margin:0;padding:12px 24px;cursor:pointer;font-weight:700;font-size:14px;background:#fff;min-height:46px;display:flex;align-items:center}
+  .yesno label{margin:0;padding:12px 24px;cursor:pointer;font-weight:700;font-size:14px;background:var(--field);min-height:46px;display:flex;align-items:center}
   .yesno input{position:absolute;opacity:0;pointer-events:none}
   .yesno label.on-yes{background:var(--ok);color:#fff}
   .yesno label.on-no{background:#555;color:#fff}
@@ -125,7 +127,7 @@
   .check-line input{width:22px;height:22px;flex:0 0 auto;margin-top:1px}
 
   /* Collapsible */
-  details.collapse{border:1px solid var(--line);border-radius:12px;margin-bottom:12px;background:#fff;overflow:hidden}
+  details.collapse{border:1px solid var(--line);border-radius:12px;margin-bottom:12px;background:var(--card);overflow:hidden}
   details.collapse>summary{list-style:none;cursor:pointer;padding:15px 16px;font-weight:700;font-size:15px;background:var(--panel);display:flex;align-items:center;justify-content:space-between}
   details.collapse>summary::-webkit-details-marker{display:none}
   details.collapse>summary::after{content:"▸";color:var(--gold-dark);transition:transform .2s}
@@ -146,22 +148,24 @@
   /* Ratings */
   .rate-field{margin-bottom:12px}
   .rate-scale{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
-  .rate-scale label{margin:0;text-align:center;border:1.5px solid var(--line);border-radius:9px;padding:10px 2px;font-weight:800;font-size:15px;cursor:pointer;background:#fff;min-height:46px;display:flex;align-items:center;justify-content:center}
+  .rate-scale label{margin:0;text-align:center;border:1.5px solid var(--line);border-radius:9px;padding:10px 2px;font-weight:800;font-size:15px;cursor:pointer;background:var(--field);min-height:46px;display:flex;align-items:center;justify-content:center}
   .rate-scale input{position:absolute;opacity:0;pointer-events:none}
   .rate-scale label.on{background:var(--gold);border-color:var(--gold-dark);color:var(--black)}
   .rate-legend{font-size:11px;color:var(--muted);margin-top:4px}
 
   /* Wizard nav */
-  .nav{position:sticky;bottom:0;background:#fff;border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));display:flex;gap:10px;z-index:55}
-  .nav button{flex:1;padding:15px;border-radius:12px;font-size:15px;font-weight:800;cursor:pointer;border:1.5px solid var(--black);min-height:50px}
-  .btn-prev{background:#fff;color:var(--black)}
-  .btn-next{background:var(--black);color:#fff}
+  .nav{position:sticky;bottom:0;background:var(--card);border-top:1px solid var(--line);padding:12px 16px calc(12px + env(safe-area-inset-bottom,0px));display:flex;gap:10px;z-index:55}
+  .nav button{flex:1;padding:15px;border-radius:999px;font-size:15px;font-weight:800;cursor:pointer;border:1.5px solid var(--line);min-height:50px}
+  .btn-prev{background:var(--field);color:var(--ink)}
+  .btn-next{background:var(--mustard);color:#111;border-color:var(--mustard)!important}
   .btn-next:disabled{opacity:.55;cursor:not-allowed}
   .nav .btn-prev[hidden]{display:none}
 
-  .error-note{display:none;background:#fdecea;color:var(--warn);border:1px solid #f3b7ae;border-radius:10px;padding:12px 14px;font-size:14px;margin:0 0 12px}
+  .submit{background:var(--mustard);color:#111;border:none;border-radius:999px;padding:15px;font-size:15px;font-weight:800;cursor:pointer;min-height:50px}
+  .submit:disabled{opacity:.55;cursor:not-allowed}
+  .error-note{display:none;background:rgba(224,90,75,.12);color:var(--warn);border:1px solid rgba(224,90,75,.4);border-radius:10px;padding:12px 14px;font-size:14px;margin:0 0 12px}
   .error-note ul{margin:6px 0 0;padding-left:18px}
-  .warn-note{display:none;background:#fff6e0;color:#8a5a00;border:1px solid #f0d48a;border-radius:10px;padding:12px 14px;font-size:14px;margin:12px 0 0}
+  .warn-note{display:none;background:rgba(224,183,63,.12);color:#e6c25a;border:1px solid rgba(224,183,63,.4);border-radius:10px;padding:12px 14px;font-size:14px;margin:12px 0 0}
   .warn-note.show{display:block}
 
   .autosave-note{text-align:center;font-size:12px;color:var(--muted);margin:12px 0 0}
@@ -173,7 +177,7 @@
   /* Review */
   .review-block{border:1px solid var(--line);border-radius:12px;margin-bottom:12px;overflow:hidden}
   .review-block h4{margin:0;background:var(--cream);padding:10px 14px;font-size:14px;border-bottom:1px solid var(--line)}
-  .review-block .kv{display:flex;padding:7px 14px;font-size:13.5px;border-bottom:1px solid #f0ece3}
+  .review-block .kv{display:flex;padding:7px 14px;font-size:13.5px;border-bottom:1px solid var(--line)}
   .review-block .kv:last-child{border-bottom:none}
   .review-block .kv .k{flex:0 0 45%;color:var(--muted);font-weight:600;padding-right:8px}
   .review-block .kv .v{flex:1;white-space:pre-wrap;word-break:break-word}
@@ -202,7 +206,7 @@
 <div class="wrap">
   <!-- ACCESS GATE: only authorized managers with a code may open the form -->
   <div class="card" id="gateCard" style="display:none">
-    <div class="brand"><div class="name">BARBER &amp; CO</div><div class="miami">Miami</div></div>
+    <div class="brand"><div class="name">BARBER &amp; CO</div><div class="miami">Est.2022</div></div>
     <div class="title-bar">Weekly Manager Report</div>
     <div style="padding:26px 20px 30px;max-width:380px;margin:0 auto">
       <div style="text-align:center;font-size:44px">🔒</div>
@@ -226,7 +230,7 @@
 
   <!-- Admin chooser: weekly report or office documents -->
   <div class="card" id="chooserCard" style="display:none">
-    <div class="brand"><div class="name">BARBER &amp; CO</div><div class="miami">Miami</div></div>
+    <div class="brand"><div class="name">BARBER &amp; CO</div><div class="miami">Est.2022</div></div>
     <div class="title-bar">What are you submitting?</div>
     <div style="padding:26px 20px 30px;max-width:380px;margin:0 auto;display:flex;flex-direction:column;gap:14px">
       <button type="button" class="submit" id="chooseReport" style="width:100%">📋 Weekly Manager Report</button>
@@ -239,7 +243,7 @@
 
   <!-- Office documents: admin-only direct filing -->
   <div class="card" id="officeCard" style="display:none">
-    <div class="brand"><div class="name">BARBER &amp; CO</div><div class="miami">Miami</div></div>
+    <div class="brand"><div class="name">BARBER &amp; CO</div><div class="miami">Est.2022</div></div>
     <div class="title-bar">Office Documents</div>
     <div style="padding:22px 20px 30px;max-width:420px;margin:0 auto">
       <div class="field">
@@ -283,7 +287,7 @@
         <div id="odFileList" style="font-size:13px;color:var(--muted);margin-top:8px"></div>
       </div>
       <div class="error-note" id="odError"></div>
-      <div id="odSuccess" style="display:none;background:#f0f7f1;border:1px solid #cfe5d3;border-radius:10px;padding:14px 16px;margin:10px 0;font-size:14px"></div>
+      <div id="odSuccess" style="display:none;background:rgba(52,176,106,.12);border:1px solid rgba(52,176,106,.4);border-radius:10px;padding:14px 16px;margin:10px 0;font-size:14px"></div>
       <button type="button" class="submit" id="odSubmit" style="width:100%">Submit &amp; File</button>
       <button type="button" id="odBack" style="width:100%;background:none;border:none;color:var(--muted);margin-top:12px;cursor:pointer;font-size:13.5px">← Back</button>
     </div>
@@ -296,7 +300,7 @@
 
   <form id="reportForm" class="card" novalidate autocomplete="on" style="display:none">
     <div class="brand" id="brandHeader">
-      <div class="name">BARBER &amp; CO</div><div class="miami">Miami</div>
+      <div class="name">BARBER &amp; CO</div><div class="miami">Est.2022</div>
     </div>
     <div class="title-bar">Weekly Manager Report</div>
     <div class="subtitle">Complete each step below. Your progress saves automatically on this device — no account needed.</div>
@@ -654,6 +658,6 @@
 
 <!-- Version query busts browser caches whenever the app changes.
      Bump this value on every deploy so managers always get the latest form. -->
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
