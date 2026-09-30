@@ -240,6 +240,8 @@
       <button type="button" class="submit" id="chooseReport" style="width:100%">📋 Weekly Manager Report</button>
       <button type="button" class="submit" id="chooseOffice" style="width:100%;background:var(--gold-dark)">🗂️ Office Documents</button>
       <button type="button" class="submit" id="chooseArea" style="width:100%;display:none">🧭 Area Manager Check-in</button>
+      <button type="button" class="submit" id="chooseK" style="width:100%;display:none;background:var(--gold-dark)">🗓️ Krystal's Check-in</button>
+      <button type="button" class="submit" id="chooseDash" style="width:100%;display:none;background:#2e2c28;color:var(--gold)">📊 Admin Dashboard</button>
       <p style="text-align:center;color:var(--muted);font-size:12px;margin:4px 0 0">
         Office documents: commission payouts, hostess hours, bank &amp; checks, monthly expense reports.
       </p>
@@ -306,10 +308,10 @@
       <details class="collapse">
         <summary>📋 Your duties (tap to read)</summary>
         <div class="inner" style="font-size:14px">
-          <p style="margin:0 0 10px"><b>Tuesday:</b> check MERs and Tuesday reports, merge Squire duplicates, reply to Careers Form submissions, make sure training and new-hire paperwork is printed, schedule Squire Engage campaigns for upcoming holidays.</p>
-          <p style="margin:0 0 10px"><b>Friday:</b> check each shop's sales vs weekly goal. If a shop is 3% or more behind, send a Squire Engage campaign.</p>
-          <p style="margin:0 0 10px"><b>As needed:</b> hiring and training new barbers, shop walkthroughs.</p>
-          <p style="margin:0"><b>Monthly:</b> sit-down with Nicole with one improvement idea.</p>
+          <p style="margin:0 0 10px"><b>Tuesday:</b> check MERs for all 3 shops · merge Squire duplicate profiles (30+ a week) · reply to Webflow Careers Form submissions · make sure training materials and new-hire paperwork are printed · schedule Squire Engage campaigns for holidays in the next 2 weeks · add every new contractor or hostess to Barber &amp; Co Payroll and update changed staff info.</p>
+          <p style="margin:0 0 10px"><b>Friday:</b> review each shop's sales vs weekly goal. If a shop is behind ~3% or more, send a Squire Engage campaign.</p>
+          <p style="margin:0 0 10px"><b>As needed:</b> hiring and onboarding (review applications, approve paperwork, set up Squire profiles, train new barbers) · shop walkthroughs.</p>
+          <p style="margin:0"><b>Monthly:</b> sit-down with Nicole + one improvement idea.</p>
         </div>
       </details>
       <div class="status-opts" style="grid-template-columns:1fr 1fr;margin:16px 0 6px">
@@ -322,6 +324,47 @@
       <div id="areaSuccess" style="display:none;background:rgba(52,176,106,.12);border:1px solid rgba(52,176,106,.4);border-radius:10px;padding:14px 16px;margin:10px 0;font-size:14px"></div>
       <button type="button" class="submit" id="areaSubmit" style="width:100%;display:none">Submit Check-in</button>
       <button type="button" id="areaBack" style="width:100%;background:none;border:none;color:var(--muted);margin-top:12px;cursor:pointer;font-size:13.5px">← Back</button>
+    </div>
+  </div>
+
+  <!-- Krystal's Check-in: payroll, Tuesday duties, sales, card expenses -->
+  <div class="card" id="kCard" style="display:none">
+    <div class="brand"><div class="name">BARBER &amp; CO</div><div class="miami">Krystal</div></div>
+    <div class="title-bar">Krystal's Check-in</div>
+    <div style="padding:18px 16px 30px;max-width:520px;margin:0 auto">
+      <details class="collapse">
+        <summary>📋 Your duties (tap to read)</summary>
+        <div class="inner" style="font-size:14px">
+          <p style="margin:0 0 10px"><b>Sun–Mon (weekly):</b> payroll — review hours, commissions and tips · resolve discrepancies · email the "Bank and Checks" file to Attaf (accountant).</p>
+          <p style="margin:0 0 10px"><b>Tuesday (weekly):</b> make sure every new contractor or hostess is in the "Bank and Checks" file before Sunday (tell Dario if anything is missing) · check and respond to Google reviews for all 3 shops · compare each shop's sales to last week — if a shop went down and no Squire Engage campaign was sent, post it in the managers chat.</p>
+          <p style="margin:0 0 10px"><b>Tuesday (monthly):</b> Week 1 — card expense check + keep employee paperwork organized · Week 2 — inventory count, note what's low · Week 3 — place the order from the email list + low items · Week 4 — order follow-up + monthly performance report.</p>
+        </div>
+      </details>
+      <div class="status-opts" style="grid-template-columns:1fr 1fr;margin:16px 0 6px">
+        <label class="area-tab" id="kTabPayroll">💵 Payroll (Sun–Mon)</label>
+        <label class="area-tab" id="kTabTue">✅ Tuesday</label>
+        <label class="area-tab" id="kTabSales">📈 Sales Check</label>
+        <label class="area-tab" id="kTabCard">💳 Card Expense</label>
+      </div>
+      <div id="kPayrollForm" style="display:none"></div>
+      <div id="kTueForm" style="display:none"></div>
+      <div id="kSalesForm" style="display:none"></div>
+      <div id="kCardForm" style="display:none"></div>
+      <div class="error-note" id="kError"></div>
+      <div id="kSuccess" style="display:none;background:rgba(52,176,106,.12);border:1px solid rgba(52,176,106,.4);border-radius:10px;padding:14px 16px;margin:10px 0;font-size:14px"></div>
+      <button type="button" class="submit" id="kSubmit" style="width:100%;display:none">Submit Check-in</button>
+      <button type="button" id="kBack" style="width:100%;background:none;border:none;color:var(--muted);margin-top:12px;cursor:pointer;font-size:13.5px">← Back</button>
+    </div>
+  </div>
+
+  <!-- Admin Dashboard: read-only status board for Nicole -->
+  <div class="card" id="dashCard" style="display:none">
+    <div class="brand"><div class="name">BARBER &amp; CO</div><div class="miami">Admin</div></div>
+    <div class="title-bar">What's Done &amp; What's Missing</div>
+    <div style="padding:18px 16px 30px;max-width:560px;margin:0 auto">
+      <div id="dashBody" style="font-size:14px"><p style="color:var(--muted);text-align:center">Loading…</p></div>
+      <button type="button" class="submit" id="dashRefresh" style="width:100%;margin-top:14px">🔄 Refresh</button>
+      <button type="button" id="dashBack" style="width:100%;background:none;border:none;color:var(--muted);margin-top:12px;cursor:pointer;font-size:13.5px">← Back</button>
     </div>
   </div>
 
@@ -690,6 +733,6 @@
 
 <!-- Version query busts browser caches whenever the app changes.
      Bump this value on every deploy so managers always get the latest form. -->
-<script src="app.js?v=14"></script>
+<script src="app.js?v=15"></script>
 </body>
 </html>
