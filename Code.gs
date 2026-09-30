@@ -31,7 +31,7 @@ var DEFAULTS = {
   // Web app /exec URL, used to build approve/reject links. Apps Script cannot
   // always report its own URL, so keep it here; update it if you ever create a
   // NEW deployment (editing an existing deployment keeps the same URL).
-  WEB_APP_URL: 'https://script.google.com/macros/s/AKfycbyIW58ZAR5VqRzJ5pawKhp4e8Y5pLZUfw5FlU2hDyuJiRNBxi99cqmZlE9MbqBnWJoG/exec',
+  WEB_APP_URL: 'https://script.google.com/macros/s/AKfycbyEqJttcG53p5JcxXA5G4OZlTd_OLqh57WE9eot6THi-ywzZLeEig3BEsw98fuYIH1V/exec',
 
   // ---- Access control & upload protection ----
   REQUIRE_ACCESS_CODE: 'true',   // managers must enter their 6-digit code

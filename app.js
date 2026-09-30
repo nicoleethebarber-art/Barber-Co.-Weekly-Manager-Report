@@ -9,7 +9,7 @@
 
   // ---- CONFIG -------------------------------------------------------------
   // Paste your Google Apps Script Web App URL between the quotes (see README).
-  var ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbyIW58ZAR5VqRzJ5pawKhp4e8Y5pLZUfw5FlU2hDyuJiRNBxi99cqmZlE9MbqBnWJoG/exec";
+  var ENDPOINT_URL = "https://script.google.com/macros/s/AKfycbyEqJttcG53p5JcxXA5G4OZlTd_OLqh57WE9eot6THi-ywzZLeEig3BEsw98fuYIH1V/exec";
 
   var DRAFT_KEY = "barberco_report_draft_v3";
   var SUBMIT_ID_KEY = "barberco_submit_id";
