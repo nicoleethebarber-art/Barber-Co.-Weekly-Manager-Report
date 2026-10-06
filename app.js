@@ -1065,19 +1065,30 @@
     afterAuth();
   }
 
-  /** After a verified session: admins choose report vs office docs; managers go straight to the report. */
+  /** After a verified session: admins and location managers get the chooser;
+      everyone else goes straight to the 8-step report form. */
   function afterAuth() {
     if (session && session.isAdmin) { showChooser(); return; }
-    // The Edgewater manager (typically Juan) gets the simple entry point instead of the 8-step wizard.
-    if (isEdgewaterMgr_()) { showChooser(); return; }
+    // Managers assigned to a known shop location get the location check-in chooser.
+    var loc = String((session && session.location) || "").trim().toLowerCase();
+    if (loc === "miami / edgewater" || loc === "pinecrest" || loc === "studio") { showChooser(); return; }
     showReportForm();
   }
 
-  /** True when the signed-in manager is assigned to Edgewater (Juan by name as fallback). */
-  function isEdgewaterMgr_() {
-    var nm = String((session && session.name) || "");
-    var loc = String((session && session.location) || "");
-    return /edgewater/i.test(loc) || /^juan\b/i.test(nm);
+  /** Shop locations with a check-in flow. Values must match the backend's allowed list. */
+  var LOCATIONS = ["Miami / Edgewater", "Pinecrest", "Studio"];
+
+  /** Locations whose check-in buttons are visible to the current session. */
+  function visibleLocations_() {
+    var nm = String((session && session.name) || "").trim();
+    var isNicole = /^nicole\b/i.test(nm);
+    var admin = !!(session && session.isAdmin);
+    var loc = String((session && session.location) || "").trim();
+    if (admin || isNicole || !loc) return LOCATIONS.slice();
+    for (var i = 0; i < LOCATIONS.length; i++) {
+      if (LOCATIONS[i].toLowerCase() === loc.toLowerCase()) return [LOCATIONS[i]];
+    }
+    return [];
   }
 
   function showChooser() {
@@ -1086,26 +1097,51 @@
     $("#areaCard").style.display = "none";
     $("#dashCard").style.display = "none";
     $("#kCard").style.display = "none";
-    $("#juanCard").style.display = "none";
+    $("#locCard").style.display = "none";
     $("#chooserCard").style.display = "";
     var nm = String((session && session.name) || "").trim();
-    var isDario = /^dario\b/i.test(nm), isKrystal = /^krystal\b/i.test(nm), isNicole = /^nicole\b/i.test(nm);
-    var isEdgewaterMgr = isEdgewaterMgr_();
+    var isNicole = /^nicole\b/i.test(nm);
     var admin = !!(session && session.isAdmin);
-    $("#chooseArea").style.display = (isDario || isNicole) ? "" : "none";
-    $("#chooseK").style.display = (isKrystal || isNicole) ? "" : "none";
-    $("#chooseJuan").style.display = (isEdgewaterMgr || isNicole) ? "" : "none";
+    var vis = visibleLocations_();
+    $("#chooseEdgewater").style.display = vis.indexOf("Miami / Edgewater") > -1 ? "" : "none";
+    $("#choosePinecrest").style.display = vis.indexOf("Pinecrest") > -1 ? "" : "none";
+    $("#chooseStudio").style.display = vis.indexOf("Studio") > -1 ? "" : "none";
+    $("#chooseSpark").style.display = (admin || isNicole) ? "" : "none";
     $("#chooseOffice").style.display = admin ? "" : "none";
     $("#chooseDash").style.display = isNicole ? "" : "none";
     if (!showChooser.__init) {
       showChooser.__init = true;
       $("#chooseReport").addEventListener("click", showReportForm);
       $("#chooseOffice").addEventListener("click", showOffice);
-      $("#chooseArea").addEventListener("click", showArea);
-      $("#chooseK").addEventListener("click", showK);
-      $("#chooseJuan").addEventListener("click", showJuan);
+      $("#chooseEdgewater").addEventListener("click", function () { showLoc("Miami / Edgewater"); });
+      $("#choosePinecrest").addEventListener("click", function () { showLoc("Pinecrest"); });
+      $("#chooseStudio").addEventListener("click", function () { showLoc("Studio"); });
+      $("#chooseSpark").addEventListener("click", sparkAuto);
       $("#chooseDash").addEventListener("click", showDash);
     }
+  }
+
+  /** Spark Auto — queue a server-side auto check-in run (Nicole/admin only).
+      Spark pulls the week's numbers and files the check-ins; this just queues it. */
+  function sparkAuto() {
+    if (!confirm("Run Spark Auto check now? Spark will pull the week's numbers and file the check-ins.")) return;
+    var btn = $("#chooseSpark");
+    btn.disabled = true;
+    fetch(ENDPOINT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "sparkcheck", token: session.token, sparkType: "weekly-auto" })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        btn.disabled = false;
+        if (res && res.status === "success") {
+          alert("\u26a1 Queued \u2014 Spark will run the auto check and report back.");
+        } else {
+          alert((res && res.message) || "Could not queue Spark Auto. Please try again.");
+        }
+      })
+      .catch(function () { btn.disabled = false; alert("Couldn't reach the server. Check your connection and try again."); });
   }
 
   var formStarted = false;
@@ -1115,7 +1151,7 @@
     $("#areaCard").style.display = "none";
     $("#dashCard").style.display = "none";
     $("#kCard").style.display = "none";
-    $("#juanCard").style.display = "none";
+    $("#locCard").style.display = "none";
     form.style.display = "";
     if (!formStarted) { formStarted = true; startForm(); }
   }
@@ -1128,7 +1164,9 @@
   var odUploads = [];
 
   // =========================================================================
-  // AREA MANAGER CHECK-IN (Dario) — Tuesday Check and Friday Sales Check
+  // DEPRECATED: AREA MANAGER CHECK-IN (Dario) — Tuesday Check and Friday Sales Check.
+  // The chooser buttons were removed; location check-ins + Spark Auto replaced
+  // these person-based flows. Code kept for reference only — unreachable.
   // =========================================================================
   var AREA_SHOPS = ["Edgewater", "Pinecrest", "Studio"];
   var areaMode = "";
@@ -1139,7 +1177,7 @@
     $("#officeCard").style.display = "none";
     $("#dashCard").style.display = "none";
     $("#kCard").style.display = "none";
-    $("#juanCard").style.display = "none";
+    $("#locCard").style.display = "none";
     $("#areaCard").style.display = "";
     initArea();
   }
@@ -1370,7 +1408,9 @@
   }
 
   // =========================================================================
-  // KRYSTAL'S CHECK-IN — payroll, Tuesday duties, sales vs last week, card
+  // DEPRECATED: KRYSTAL'S CHECK-IN — payroll, Tuesday duties, sales vs last week, card
+  // expenses. The chooser buttons were removed; location check-ins + Spark Auto
+  // replaced these person-based flows. Code kept for reference only — unreachable.
   // =========================================================================
   var kMode = "";
 
@@ -1380,7 +1420,7 @@
     $("#officeCard").style.display = "none";
     $("#areaCard").style.display = "none";
     $("#dashCard").style.display = "none";
-    $("#juanCard").style.display = "none";
+    $("#locCard").style.display = "none";
     $("#kCard").style.display = "";
     initK();
   }
@@ -1626,11 +1666,14 @@
   }
 
   // =========================================================================
-  // JUAN'S CHECK (Miami/Edgewater) — inventory + physical shop work.
-  // Dead simple: 2 short steps, big buttons, minimal typing. Submits with
-  // action "juancheck" through the same endpoint/auth/upload plumbing.
+  // LOCATION CHECK-IN — inventory + physical shop work, per location.
+  // Generalized from the old Juan/Edgewater-only flow. Dead simple: 2 short
+  // steps, big buttons, minimal typing. The location comes from the chooser
+  // button tapped and is shown prominently; it is NOT editable in this flow.
+  // Submits with action "locationcheck" through the same endpoint/auth/upload
+  // plumbing.
   // =========================================================================
-  var JUAN_SUPPLIES = [
+  var LOC_SUPPLIES = [
     "Black Towels", "White Towels", "Barbicide", "Towel Oil", "Black Mask", "Wax", "Wax Sticks", "Shaving Cream",
     "Dish Soap", "Paper Towels", "Mouth Wash", "Sponges", "Vinegar", "Purified Water", "Windex",
     "All Purpose Cleaner", "Garbage Bag (Black)", "Garbage Bag (White)", "Incense", "Handsoap",
@@ -1638,7 +1681,7 @@
     "Coffee Cups", "Sugar", "Straws", "Cocktail Napkins", "Coffee", "Plastic Cups", "Candy",
     "Coca-Cola", "Coca Zero", "Sprite", "Ginger", "Sparkling Water"
   ];
-  var JUAN_CHECKS = [
+  var LOC_CHECKS = [
     { key: "stations", label: "Stations" },
     { key: "steamer", label: "Steamer" },
     { key: "lather", label: "Lather machine" },
@@ -1646,92 +1689,98 @@
     { key: "condition", label: "General shop condition" },
     { key: "maintenance", label: "Maintenance / equipment issues" }
   ];
-  var juanMode = "";
+  var locMode = "";
+  var locLocation = "";
 
-  function showJuan() {
+  function showLoc(location) {
+    locLocation = location;
     $("#chooserCard").style.display = "none";
     form.style.display = "none";
     $("#officeCard").style.display = "none";
     $("#areaCard").style.display = "none";
     $("#dashCard").style.display = "none";
     $("#kCard").style.display = "none";
-    $("#juanCard").style.display = "";
-    initJuan();
+    // Location is prominent and not editable — it comes from the button tapped.
+    $("#locTitle").textContent = "\uD83D\uDCE6 " + location + " Check-in";
+    $("#locBrand").textContent = location;
+    $("#locHint").textContent = "Quick in-shop check for " + location + ". Two short steps \u2014 big buttons, no essays.";
+    $("#locCard").style.display = "";
+    initLoc();
   }
 
-  function juanFail(msg) {
-    var e = $("#juanError");
+  function locFail(msg) {
+    var e = $("#locError");
     e.textContent = msg; e.style.display = "block";
     e.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
-  function juanInvRow(name) {
-    return '<div class="row-item juan-inv-row">' +
-      '<button type="button" class="row-remove" data-jrm aria-label="Remove item">\u00d7</button>' +
+  function locInvRow(name) {
+    return '<div class="row-item loc-inv-row">' +
+      '<button type="button" class="row-remove" data-lrm aria-label="Remove item">\u00d7</button>' +
       '<div class="row-grid">' +
-      '<div><span class="mini-label">Product</span><input type="text" data-jname value="' + escapeHtml(name || "") + '" placeholder="Product name"></div>' +
+      '<div><span class="mini-label">Product</span><input type="text" data-lname value="' + escapeHtml(name || "") + '" placeholder="Product name"></div>' +
       '<div class="two-col">' +
-      '<div><span class="mini-label">On hand</span><input type="number" inputmode="numeric" min="0" data-jqty placeholder="0"></div>' +
-      '<div><span class="mini-label">Need to order?</span><label style="display:flex;align-items:center;gap:10px;background:var(--field);border:1.5px solid var(--line);border-radius:10px;padding:12px;min-height:50px;cursor:pointer;font-weight:700;font-size:14px"><input type="checkbox" data-jlow style="width:22px;height:22px"> Low — order</label></div>' +
+      '<div><span class="mini-label">On hand</span><input type="number" inputmode="numeric" min="0" data-lqty placeholder="0"></div>' +
+      '<div><span class="mini-label">Need to order?</span><label style="display:flex;align-items:center;gap:10px;background:var(--field);border:1.5px solid var(--line);border-radius:10px;padding:12px;min-height:50px;cursor:pointer;font-weight:700;font-size:14px"><input type="checkbox" data-llow style="width:22px;height:22px"> Low — order</label></div>' +
       "</div></div></div>";
   }
 
-  function buildJuanForms() {
+  function buildLocForms() {
     var inv = '<div class="group"><h3>What\u2019s on the shelf?</h3>' +
       '<p class="group-note">Enter how many you have. Tick \u201cLow — order\u201d for anything running out.</p>' +
-      '<div class="rows" id="juanInvRows">';
-    JUAN_SUPPLIES.forEach(function (s) { inv += juanInvRow(s); });
-    inv += '</div><button type="button" class="add-btn" id="juanAddRow">\uff0b Add item</button></div>';
-    $("#juanInvForm").innerHTML = inv;
+      '<div class="rows" id="locInvRows">';
+    LOC_SUPPLIES.forEach(function (s) { inv += locInvRow(s); });
+    inv += '</div><button type="button" class="add-btn" id="locAddRow">\uff0b Add item</button></div>';
+    $("#locInvForm").innerHTML = inv;
 
     var shop = '<div class="group"><h3>Walk the shop</h3>' +
       '<p class="group-note">Tap <b>Pass</b> or <b>Issue</b> for each. Add a photo and a quick note for anything wrong.</p>';
-    JUAN_CHECKS.forEach(function (c) {
+    LOC_CHECKS.forEach(function (c) {
       shop += '<div style="border-top:1px solid var(--line);padding-top:12px;margin-top:12px">' +
         "<b>" + escapeHtml(c.label) + "</b>" +
-        segHtml("jchk_" + c.key, [["Pass", "ok"], ["Issue", "no"]]) +
-        '<div class="uploader" data-upload="juan_' + c.key + '" style="margin-top:10px">' +
+        segHtml("lchk_" + c.key, [["Pass", "ok"], ["Issue", "no"]]) +
+        '<div class="uploader" data-upload="loc_' + c.key + '" style="margin-top:10px">' +
         '<label class="upload-btn"><input type="file" class="upload-input" accept="image/*,application/pdf" multiple>\ud83d\udcf7 Add photo</label>' +
         '<div class="thumbs"></div></div>' +
-        '<div class="field" data-jnoteswrap="' + c.key + '" style="display:none;margin-top:10px"><label>What\u2019s wrong? *</label>' +
-        '<textarea data-jnotes="' + c.key + '" placeholder="Quick note"></textarea></div></div>';
+        '<div class="field" data-lnoteswrap="' + c.key + '" style="display:none;margin-top:10px"><label>What\u2019s wrong? *</label>' +
+        '<textarea data-lnotes="' + c.key + '" placeholder="Quick note"></textarea></div></div>';
     });
     shop += "</div>";
-    $("#juanShopForm").innerHTML = shop;
+    $("#locShopForm").innerHTML = shop;
   }
 
-  function juanSetMode(mode) {
-    juanMode = mode;
-    $("#juanTabInv").classList.toggle("on", mode === "inv");
-    $("#juanTabShop").classList.toggle("on", mode === "shop");
-    $("#juanInvForm").style.display = mode === "inv" ? "" : "none";
-    $("#juanShopForm").style.display = mode === "shop" ? "" : "none";
-    $("#juanSubmit").style.display = mode ? "" : "none";
-    $("#juanError").style.display = "none";
+  function locSetMode(mode) {
+    locMode = mode;
+    $("#locTabInv").classList.toggle("on", mode === "inv");
+    $("#locTabShop").classList.toggle("on", mode === "shop");
+    $("#locInvForm").style.display = mode === "inv" ? "" : "none";
+    $("#locShopForm").style.display = mode === "shop" ? "" : "none";
+    $("#locSubmit").style.display = mode ? "" : "none";
+    $("#locError").style.display = "none";
   }
 
-  function juanCollect() {
-    var d = { mode: juanMode, inventory: [], checks: [] };
-    $$("#juanInvRows .juan-inv-row").forEach(function (r) {
+  function locCollect() {
+    var d = { mode: locMode, inventory: [], checks: [] };
+    $$("#locInvRows .loc-inv-row").forEach(function (r) {
       d.inventory.push({
-        name: r.querySelector("[data-jname]").value.trim(),
-        qty: r.querySelector("[data-jqty]").value.trim(),
-        low: !!r.querySelector("[data-jlow]").checked
+        name: r.querySelector("[data-lname]").value.trim(),
+        qty: r.querySelector("[data-lqty]").value.trim(),
+        low: !!r.querySelector("[data-llow]").checked
       });
     });
-    var shop = $("#juanShopForm");
-    JUAN_CHECKS.forEach(function (c) {
-      var notesEl = shop.querySelector('[data-jnotes="' + c.key + '"]');
+    var shop = $("#locShopForm");
+    LOC_CHECKS.forEach(function (c) {
+      var notesEl = shop.querySelector('[data-lnotes="' + c.key + '"]');
       d.checks.push({
         key: c.key, label: c.label,
-        status: segValue(shop, "jchk_" + c.key),
+        status: segValue(shop, "lchk_" + c.key),
         notes: notesEl ? notesEl.value.trim() : ""
       });
     });
     return d;
   }
 
-  function juanValidate(d) {
+  function locValidate(d) {
     var p = [];
     if (!d.inventory.length) p.push("Add at least one inventory item.");
     d.inventory.forEach(function (r, i) {
@@ -1745,29 +1794,29 @@
     return p;
   }
 
-  function juanClearBuckets() {
-    Object.keys(uploads).forEach(function (b) { if (b.indexOf("juan_") === 0) delete uploads[b]; });
+  function locClearBuckets() {
+    Object.keys(uploads).forEach(function (b) { if (b.indexOf("loc_") === 0) delete uploads[b]; });
   }
 
-  function juanSubmitForm() {
-    var btn = $("#juanSubmit"), ok = $("#juanSuccess");
-    $("#juanError").style.display = "none"; ok.style.display = "none";
-    if (!juanMode) { juanFail("Pick step 1 or 2 first."); return; }
-    var d = juanCollect();
-    var problems = juanValidate(d);
-    if (problems.length) { juanFail(problems.join(" ")); return; }
-    var juploads = {};
+  function locSubmitForm() {
+    var btn = $("#locSubmit"), ok = $("#locSuccess");
+    $("#locError").style.display = "none"; ok.style.display = "none";
+    if (!locMode) { locFail("Pick step 1 or 2 first."); return; }
+    var d = locCollect();
+    var problems = locValidate(d);
+    if (problems.length) { locFail(problems.join(" ")); return; }
+    var locUploads = {};
     Object.keys(uploads).forEach(function (b) {
-      if (b.indexOf("juan_") === 0 && (uploads[b] || []).length) juploads[b] = uploads[b];
+      if (b.indexOf("loc_") === 0 && (uploads[b] || []).length) locUploads[b] = uploads[b];
     });
     var payload = {
-      action: "juancheck",
-      token: session && session.token,
+      action: "locationcheck",
+      token: session.token,
       submissionId: uuid(),
-      location: "Miami / Edgewater",
+      location: locLocation,
       inventory: d.inventory,
       checks: d.checks,
-      uploads: juploads
+      uploads: locUploads
     };
     btn.disabled = true; btn.textContent = "Submitting\u2026";
     fetch(ENDPOINT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) })
@@ -1775,26 +1824,26 @@
       .then(function (res) {
         btn.disabled = false; btn.textContent = "Submit Check";
         if (res && res.status === "success") {
-          juanClearBuckets();
+          locClearBuckets();
           ok.innerHTML = "\u2705 <strong>Check submitted!</strong> Nicole has been emailed.<br>Reference: " + escapeHtml(res.ref || "");
           ok.style.display = ""; ok.scrollIntoView({ behavior: "smooth", block: "center" });
         } else if (res && /access code|session has expired/i.test(res.message || "")) {
-          clearSession(); session = null; $("#juanCard").style.display = "none"; showGate();
+          clearSession(); session = null; $("#locCard").style.display = "none"; showGate();
         } else {
-          juanFail((res && res.message) || "The server could not save the check. Please try again.");
+          locFail((res && res.message) || "The server could not save the check. Please try again.");
         }
       })
-      .catch(function () { btn.disabled = false; btn.textContent = "Submit Check"; juanFail("Couldn't reach the server. Check your connection and try again."); });
+      .catch(function () { btn.disabled = false; btn.textContent = "Submit Check"; locFail("Couldn't reach the server. Check your connection and try again."); });
   }
 
-  function initJuan() {
-    if (initJuan.__init) return;
-    initJuan.__init = true;
-    buildJuanForms();
-    $$(".uploader", $("#juanShopForm")).forEach(initUploader);
-    $("#juanCard").addEventListener("click", function (e) {
-      var rm = e.target.closest("[data-jrm]");
-      if (rm) { var row = rm.closest(".juan-inv-row"); if (row) row.remove(); return; }
+  function initLoc() {
+    if (initLoc.__init) return;
+    initLoc.__init = true;
+    buildLocForms();
+    $$(".uploader", $("#locShopForm")).forEach(initUploader);
+    $("#locCard").addEventListener("click", function (e) {
+      var rm = e.target.closest("[data-lrm]");
+      if (rm) { var row = rm.closest(".loc-inv-row"); if (row) row.remove(); return; }
       var lab = e.target.closest(".seg label");
       if (!lab) return;
       var seg = lab.parentElement;
@@ -1802,27 +1851,26 @@
       Array.prototype.slice.call(seg.children).forEach(function (l) { l.classList.remove("sel-ok", "sel-no", "sel-na"); });
       lab.classList.add("sel-" + lab.dataset.tone);
       var k = seg.dataset.seg, v = seg.dataset.val;
-      if (k.indexOf("jchk_") === 0) {
+      if (k.indexOf("lchk_") === 0) {
         var key = k.slice(5);
-        var wrap = $("#juanShopForm").querySelector('[data-jnoteswrap="' + key + '"]');
+        var wrap = $("#locShopForm").querySelector('[data-lnoteswrap="' + key + '"]');
         if (wrap) wrap.style.display = v === "Issue" ? "" : "none";
       }
     });
-    $("#juanAddRow").addEventListener("click", function () {
-      var host = $("#juanInvRows");
-      host.insertAdjacentHTML("beforeend", juanInvRow(""));
-      var rows = host.querySelectorAll(".juan-inv-row");
+    $("#locAddRow").addEventListener("click", function () {
+      var host = $("#locInvRows");
+      host.insertAdjacentHTML("beforeend", locInvRow(""));
+      var rows = host.querySelectorAll(".loc-inv-row");
       var last = rows[rows.length - 1];
       last.scrollIntoView({ behavior: "smooth", block: "center" });
-      var inp = last.querySelector("[data-jname]"); if (inp) inp.focus();
+      var inp = last.querySelector("[data-lname]"); if (inp) inp.focus();
     });
-    $("#juanTabInv").addEventListener("click", function () { juanSetMode("inv"); });
-    $("#juanTabShop").addEventListener("click", function () { juanSetMode("shop"); });
-    $("#juanBack").addEventListener("click", showChooser);
-    $("#juanSubmit").addEventListener("click", juanSubmitForm);
+    $("#locTabInv").addEventListener("click", function () { locSetMode("inv"); });
+    $("#locTabShop").addEventListener("click", function () { locSetMode("shop"); });
+    $("#locBack").addEventListener("click", showChooser);
+    $("#locSubmit").addEventListener("click", locSubmitForm);
   }
 
-  // =========================================================================
   // ADMIN DASHBOARD (Nicole) — read-only: what's done, what's missing
   // =========================================================================
   function showDash() {
@@ -1831,7 +1879,7 @@
     $("#officeCard").style.display = "none";
     $("#areaCard").style.display = "none";
     $("#kCard").style.display = "none";
-    $("#juanCard").style.display = "none";
+    $("#locCard").style.display = "none";
     $("#dashCard").style.display = "";
     if (!showDash.__init) {
       showDash.__init = true;
@@ -1960,7 +2008,7 @@
     $("#areaCard").style.display = "none";
     $("#dashCard").style.display = "none";
     $("#kCard").style.display = "none";
-    $("#juanCard").style.display = "none";
+    $("#locCard").style.display = "none";
     $("#officeCard").style.display = "";
     initOffice();
   }
