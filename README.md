@@ -26,6 +26,7 @@ On every submission the system automatically:
 | `app.js` | Front-end logic: wizard, validation, conditional logic, dynamic rows, totals, autosave, uploads, submission |
 | `Code.gs` | Google Apps Script backend: storage, PDF, email, dedupe, rate-limiting, sanitization |
 | `README.md` | This guide |
+| `SPARK_TASKS.md` | Spark's weekly MER tasks (what he does vs. what he asks Nicole) |
 
 > **Files are never stored in source control.** Uploaded photos/receipts live only
 > in the private Drive folder created by the backend.
