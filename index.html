@@ -239,70 +239,14 @@
     <div style="padding:26px 20px 30px;max-width:380px;margin:0 auto;display:flex;flex-direction:column;gap:14px">
       <button type="button" class="submit" id="chooseReport" style="width:100%">📋 Weekly Manager Report</button>
       <button type="button" class="submit" id="chooseOffice" style="width:100%;background:var(--gold-dark)">🗂️ Office Documents</button>
-      <button type="button" class="submit" id="chooseArea" style="width:100%;display:none">🧭 Dario's Check-in</button>
-      <button type="button" class="submit" id="chooseK" style="width:100%;display:none;background:var(--gold-dark)">🗓️ Krystal's Check-in</button>
-      <button type="button" class="submit shopBtn" data-shop="Edgewater" style="width:100%;display:none;background:#2e2c28;color:var(--ink)">🏪 Edgewater — Shop Check &amp; Inventory</button>
-      <button type="button" class="submit shopBtn" data-shop="Pinecrest" style="width:100%;display:none;background:#2e2c28;color:var(--ink)">🏪 Pinecrest — Shop Check &amp; Inventory</button>
-      <button type="button" class="submit shopBtn" data-shop="Studio" style="width:100%;display:none;background:#2e2c28;color:var(--ink)">🏪 Studio — Shop Check &amp; Inventory</button>
+      <button type="button" class="submit" id="chooseEdgewater" style="width:100%;display:none;background:#2e2c28;color:var(--gold)">📦 Edgewater Check-in</button>
+      <button type="button" class="submit" id="choosePinecrest" style="width:100%;display:none;background:#2e2c28;color:var(--gold)">📦 Pinecrest Check-in</button>
+      <button type="button" class="submit" id="chooseStudio" style="width:100%;display:none;background:#2e2c28;color:var(--gold)">📦 Studio Check-in</button>
+      <button type="button" class="submit" id="chooseSpark" style="width:100%;display:none;background:#2e2c28;color:var(--gold)">⚡ Spark Auto</button>
       <button type="button" class="submit" id="chooseDash" style="width:100%;display:none;background:#2e2c28;color:var(--gold)">📊 Admin Dashboard</button>
       <p style="text-align:center;color:var(--muted);font-size:12px;margin:4px 0 0">
         Office documents: commission payouts, hostess hours, bank &amp; checks, monthly expense reports.
       </p>
-    </div>
-  </div>
-
-  <!-- Shop check & inventory: monthly, by each shop's manager -->
-  <div class="card" id="shopCard" style="display:none">
-    <div class="brand"><div class="name">BARBER &amp; CO</div><div class="miami">Est.2022</div></div>
-    <div class="title-bar">Shop Check &amp; Inventory</div>
-    <div style="padding:22px 20px 30px;max-width:420px;margin:0 auto">
-      <p style="text-align:center;color:var(--muted);font-size:13px;margin:0 0 14px">
-        Shop: <b id="scShopName" style="color:var(--mustard)"></b> · once a month
-      </p>
-      <div class="field">
-        <label for="scClean">Shop clean and presentable? *</label>
-        <select id="scClean">
-          <option value="">Select…</option>
-          <option>Yes</option>
-          <option>Needs attention</option>
-        </select>
-      </div>
-      <div class="field" id="scCleanNotesWrap" style="display:none">
-        <label for="scCleanNotes">What needs attention? *</label>
-        <textarea id="scCleanNotes" rows="2" placeholder="Describe it…"></textarea>
-      </div>
-      <div class="field">
-        <label for="scWorking">Everything working — stations, steamer, lather machine, AC, lights? *</label>
-        <select id="scWorking">
-          <option value="">Select…</option>
-          <option>Yes</option>
-          <option>Something broken</option>
-        </select>
-      </div>
-      <div class="field" id="scWorkNotesWrap" style="display:none">
-        <label for="scWorkNotes">What's broken? *</label>
-        <textarea id="scWorkNotes" rows="2" placeholder="Describe it…"></textarea>
-      </div>
-      <div class="field">
-        <label for="scLowItems">Inventory — what's running low? *</label>
-        <div id="scSupplyChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px"></div>
-        <textarea id="scLowItems" rows="3" placeholder='Tap items above or type your own — or write "nothing low" if fully stocked'></textarea>
-      </div>
-      <div class="field">
-        <label for="scNotes">Anything else? (optional)</label>
-        <textarea id="scNotes" rows="2" placeholder="Other notes…"></textarea>
-      </div>
-      <div class="field">
-        <label class="upload-btn" style="width:100%;justify-content:center">
-          <input type="file" id="scFiles" accept=".pdf,.jpg,.jpeg,.png,.heic,image/*,application/pdf" multiple style="display:none">
-          📷 Add photos or receipts (optional)
-        </label>
-        <div id="scFileList" style="font-size:13px;color:var(--muted);margin-top:8px"></div>
-      </div>
-      <div class="error-note" id="scError"></div>
-      <div id="scSuccess" style="display:none;background:rgba(52,176,106,.12);border:1px solid rgba(52,176,106,.4);border-radius:10px;padding:14px 16px;margin:10px 0;font-size:14px"></div>
-      <button type="button" class="submit" id="scSubmit" style="width:100%">Submit Shop Check</button>
-      <button type="button" id="scBack" style="width:100%;background:none;border:none;color:var(--muted);margin-top:12px;cursor:pointer;font-size:13.5px">← Back</button>
     </div>
   </div>
 
@@ -319,7 +263,6 @@
           <option value="hostess">Hostess Hours Report</option>
           <option value="bank">Bank &amp; Checks</option>
           <option value="expense">Monthly Expense Report</option>
-          <option value="receipts">Extra Receipts (Amazon / Instacart / other)</option>
         </select>
       </div>
       <div class="field" id="odLocWrap" style="display:none">
@@ -359,7 +302,9 @@
     </div>
   </div>
 
-  <!-- Area Manager Check-in: Dario's Tuesday / Friday routine -->
+  <!-- DEPRECATED: Area Manager Check-in (Dario's Tuesday / Friday routine).
+       The chooser buttons were removed; location check-ins + Spark Auto
+       replaced these person-based flows. Card and JS kept for reference only. -->
   <div class="card" id="areaCard" style="display:none">
     <div class="brand"><div class="name">BARBER &amp; CO</div><div class="miami">Dario</div></div>
     <div class="title-bar">Dario's Check-in</div>
@@ -386,7 +331,9 @@
     </div>
   </div>
 
-  <!-- Krystal's Check-in: payroll, Tuesday duties, sales, card expenses -->
+  <!-- DEPRECATED: Krystal's Check-in (payroll, Tuesday duties, sales, card expenses).
+       The chooser buttons were removed; location check-ins + Spark Auto
+       replaced these person-based flows. Card and JS kept for reference only. -->
   <div class="card" id="kCard" style="display:none">
     <div class="brand"><div class="name">BARBER &amp; CO</div><div class="miami">Krystal</div></div>
     <div class="title-bar">Krystal's Check-in</div>
@@ -409,6 +356,28 @@
       <div id="kSuccess" style="display:none;background:rgba(52,176,106,.12);border:1px solid rgba(52,176,106,.4);border-radius:10px;padding:14px 16px;margin:10px 0;font-size:14px"></div>
       <button type="button" class="submit" id="kSubmit" style="width:100%;display:none">Submit Check-in</button>
       <button type="button" id="kBack" style="width:100%;background:none;border:none;color:var(--muted);margin-top:12px;cursor:pointer;font-size:13.5px">← Back</button>
+    </div>
+  </div>
+
+  <!-- Location check-in: inventory + physical shop work (per-location).
+       Generalized from the old Juan/Edgewater-only flow. The location is set
+       by which chooser button was tapped and is shown prominently; it is not
+       editable in this flow. -->
+  <div class="card" id="locCard" style="display:none">
+    <div class="brand"><div class="name">BARBER &amp; CO</div><div class="miami" id="locBrand">Check-in</div></div>
+    <div class="title-bar" id="locTitle">Inventory &amp; Shop Check</div>
+    <div style="padding:18px 16px 30px;max-width:520px;margin:0 auto">
+      <p class="hint" id="locHint" style="margin:4px 0 12px">Quick in-shop check. Two short steps — big buttons, no essays.</p>
+      <div class="status-opts" style="grid-template-columns:1fr 1fr;margin:0 0 6px">
+        <label class="area-tab" id="locTabInv">📦 1 · Inventory</label>
+        <label class="area-tab" id="locTabShop">🧹 2 · Shop Check</label>
+      </div>
+      <div id="locInvForm" style="display:none"></div>
+      <div id="locShopForm" style="display:none"></div>
+      <div class="error-note" id="locError"></div>
+      <div id="locSuccess" style="display:none;background:rgba(52,176,106,.12);border:1px solid rgba(52,176,106,.4);border-radius:10px;padding:14px 16px;margin:10px 0;font-size:14px"></div>
+      <button type="button" class="submit" id="locSubmit" style="width:100%;display:none">Submit Check</button>
+      <button type="button" id="locBack" style="width:100%;background:none;border:none;color:var(--muted);margin-top:12px;cursor:pointer;font-size:13.5px">← Back</button>
     </div>
   </div>
 
@@ -788,6 +757,6 @@
 
 <!-- Version query busts browser caches whenever the app changes.
      Bump this value on every deploy so managers always get the latest form. -->
-<script src="app.js?v=23"></script>
+<script src="app.js?v=24"></script>
 </body>
 </html>

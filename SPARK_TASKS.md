@@ -7,7 +7,7 @@ Nicole.
 
 **Login:** open the form link, sign in as **Spark** with his access code, then
 tap **📋 Weekly Manager Report** (one report per shop) or
-**📎 Submit Receipts & Documents** (extra receipts).
+**🗂️ Office Documents** (extra receipts).
 
 ---
 
@@ -15,7 +15,7 @@ tap **📋 Weekly Manager Report** (one report per shop) or
 
 | When | What Spark does |
 |------|-----------------|
-| **All week** | File any receipt Nicole forwards (Amazon, Instacart, supply stores) under **Submit Receipts & Documents → Extra Receipts** for that shop and week. Keep a running list of expenses per shop. |
+| **All week** | File any receipt Nicole forwards (Amazon, Instacart, supply stores) under **Office Documents → Extra Receipts** for that shop and week. Keep a running list of expenses per shop. |
 | **Sunday (by 6 PM)** | Send Nicole **one** message with the Sunday questions below — only the ones he still needs for this week. |
 | **Monday (by 8 PM)** | Submit the MER for each shop: **Miami / Edgewater**, **Pinecrest**, **Studio**. The expense report task is due before Monday 8:00 PM. |
 | **Monday (after submitting)** | Tell Nicole it's done: the reference # for each shop and anything left blank or marked Not Completed. |
@@ -50,8 +50,8 @@ Spark never guesses these. If he doesn't get an answer, he marks the task
 - **Step 7 – Shop report:** overall condition (1–5) and any cleanliness, repair, equipment,
   client, or staffing concerns, plus photos.
 
-Spark does **not** do the monthly **Shop Check & Inventory** — the app blocks it
-for him because it has to be done at the shop.
+Spark does **not** do the **Inventory & Shop Check** on the location buttons
+(Edgewater / Pinecrest / Studio) — it has to be done in person at the shop.
 
 ---
 
