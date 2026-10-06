@@ -1085,8 +1085,9 @@
     $("#chooseArea").style.display = (isDario || isNicole) ? "" : "none";
     $("#chooseK").style.display = (isKrystal || isNicole) ? "" : "none";
     $("#chooseDash").style.display = isNicole ? "" : "none";
-    // Spark (AI assistant) only submits documents — no report, no shop checks.
-    $("#chooseReport").style.display = isSpark ? "none" : "";
+    // Spark (AI assistant) submits the weekly MER and documents — but never the
+    // in-person shop checks, which need someone physically at the shop.
+    $("#chooseReport").style.display = "";
     $("#chooseOffice").style.display = (session && session.isAdmin) ? "" : "none";
     if (isSpark) $("#chooseOffice").textContent = "📎 Submit Receipts & Documents";
     // Shop check buttons: admins see all three, a shop manager sees their own.
