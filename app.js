@@ -1068,9 +1068,16 @@
   /** After a verified session: admins choose report vs office docs; managers go straight to the report. */
   function afterAuth() {
     if (session && session.isAdmin) { showChooser(); return; }
-    // Juan gets the dead-simple entry point instead of the 8-step wizard.
-    if (/^juan\b/i.test(String((session && session.name) || ""))) { showChooser(); return; }
+    // The Edgewater manager (typically Juan) gets the simple entry point instead of the 8-step wizard.
+    if (isEdgewaterMgr_()) { showChooser(); return; }
     showReportForm();
+  }
+
+  /** True when the signed-in manager is assigned to Edgewater (Juan by name as fallback). */
+  function isEdgewaterMgr_() {
+    var nm = String((session && session.name) || "");
+    var loc = String((session && session.location) || "");
+    return /edgewater/i.test(loc) || /^juan\b/i.test(nm);
   }
 
   function showChooser() {
@@ -1083,11 +1090,11 @@
     $("#chooserCard").style.display = "";
     var nm = String((session && session.name) || "").trim();
     var isDario = /^dario\b/i.test(nm), isKrystal = /^krystal\b/i.test(nm), isNicole = /^nicole\b/i.test(nm);
-    var isJuan = /^juan\b/i.test(nm);
+    var isEdgewaterMgr = isEdgewaterMgr_();
     var admin = !!(session && session.isAdmin);
     $("#chooseArea").style.display = (isDario || isNicole) ? "" : "none";
     $("#chooseK").style.display = (isKrystal || isNicole) ? "" : "none";
-    $("#chooseJuan").style.display = (isJuan || isNicole) ? "" : "none";
+    $("#chooseJuan").style.display = (isEdgewaterMgr || isNicole) ? "" : "none";
     $("#chooseOffice").style.display = admin ? "" : "none";
     $("#chooseDash").style.display = isNicole ? "" : "none";
     if (!showChooser.__init) {
