@@ -1065,31 +1065,11 @@
     afterAuth();
   }
 
-  /** After a verified session: admins and location managers get the chooser;
-      everyone else goes straight to the 8-step report form. */
+  /** After a verified session: admins choose report vs office docs; managers go straight to the report. */
   function afterAuth() {
-    if (session && session.isAdmin) { showChooser(); return; }
-    // Managers assigned to a known shop location get the location check-in chooser.
-    var loc = String((session && session.location) || "").trim().toLowerCase();
-    if (loc === "miami / edgewater" || loc === "pinecrest" || loc === "studio") { showChooser(); return; }
-    showReportForm();
+    showChooser();
   }
 
-  /** Shop locations with a check-in flow. Values must match the backend's allowed list. */
-  var LOCATIONS = ["Miami / Edgewater", "Pinecrest", "Studio"];
-
-  /** Locations whose check-in buttons are visible to the current session. */
-  function visibleLocations_() {
-    var nm = String((session && session.name) || "").trim();
-    var isNicole = /^nicole\b/i.test(nm);
-    var admin = !!(session && session.isAdmin);
-    var loc = String((session && session.location) || "").trim();
-    if (admin || isNicole || !loc) return LOCATIONS.slice();
-    for (var i = 0; i < LOCATIONS.length; i++) {
-      if (LOCATIONS[i].toLowerCase() === loc.toLowerCase()) return [LOCATIONS[i]];
-    }
-    return [];
-  }
 
   function showChooser() {
     form.style.display = "none";
@@ -1097,51 +1077,174 @@
     $("#areaCard").style.display = "none";
     $("#dashCard").style.display = "none";
     $("#kCard").style.display = "none";
-    $("#locCard").style.display = "none";
+    $("#shopCard").style.display = "none";
     $("#chooserCard").style.display = "";
     var nm = String((session && session.name) || "").trim();
-    var isNicole = /^nicole\b/i.test(nm);
-    var admin = !!(session && session.isAdmin);
-    var vis = visibleLocations_();
-    $("#chooseEdgewater").style.display = vis.indexOf("Miami / Edgewater") > -1 ? "" : "none";
-    $("#choosePinecrest").style.display = vis.indexOf("Pinecrest") > -1 ? "" : "none";
-    $("#chooseStudio").style.display = vis.indexOf("Studio") > -1 ? "" : "none";
-    $("#chooseSpark").style.display = (admin || isNicole) ? "" : "none";
-    $("#chooseOffice").style.display = admin ? "" : "none";
+    var isDario = /^dario\b/i.test(nm), isKrystal = /^krystal\b/i.test(nm), isNicole = /^nicole\b/i.test(nm);
+    var isSpark = /^spark\b/i.test(nm);
+    $("#chooseArea").style.display = (isDario || isNicole) ? "" : "none";
+    $("#chooseK").style.display = (isKrystal || isNicole) ? "" : "none";
     $("#chooseDash").style.display = isNicole ? "" : "none";
+    // Spark (AI assistant) only submits documents — no report, no shop checks.
+    $("#chooseReport").style.display = isSpark ? "none" : "";
+    $("#chooseOffice").style.display = (session && session.isAdmin) ? "" : "none";
+    if (isSpark) $("#chooseOffice").textContent = "📎 Submit Receipts & Documents";
+    // Shop check buttons: admins see all three, a shop manager sees their own.
+    Array.prototype.forEach.call(document.querySelectorAll(".shopBtn"), function (b) {
+      var shop = b.getAttribute("data-shop");
+      var show = false;
+      if (isSpark) show = false;
+      else if (session && session.isAdmin) show = true;
+      else if (session && session.location && session.location.toLowerCase().indexOf(shop.toLowerCase()) !== -1) show = true;
+      b.style.display = show ? "" : "none";
+      if (!b.__wired) { b.__wired = true; b.addEventListener("click", function () { showShop(shop); }); }
+    });
     if (!showChooser.__init) {
       showChooser.__init = true;
       $("#chooseReport").addEventListener("click", showReportForm);
       $("#chooseOffice").addEventListener("click", showOffice);
-      $("#chooseEdgewater").addEventListener("click", function () { showLoc("Miami / Edgewater"); });
-      $("#choosePinecrest").addEventListener("click", function () { showLoc("Pinecrest"); });
-      $("#chooseStudio").addEventListener("click", function () { showLoc("Studio"); });
-      $("#chooseSpark").addEventListener("click", sparkAuto);
+      $("#chooseArea").addEventListener("click", showArea);
+      $("#chooseK").addEventListener("click", showK);
       $("#chooseDash").addEventListener("click", showDash);
     }
   }
 
-  /** Spark Auto — queue a server-side auto check-in run (Nicole/admin only).
-      Spark pulls the week's numbers and files the check-ins; this just queues it. */
-  function sparkAuto() {
-    if (!confirm("Run Spark Auto check now? Spark will pull the week's numbers and file the check-ins.")) return;
-    var btn = $("#chooseSpark");
-    btn.disabled = true;
+  // =========================================================================
+  // SHOP CHECK & INVENTORY — monthly, by each shop's manager
+  // =========================================================================
+  var scUploads = [];
+  var scShop = "";
+  // The shop's real supply list (from Nicole / Spark) — tap to add to "running low".
+  var SC_SUPPLIES = [
+    "Black Towels", "White Towels", "Barbicide", "Towel Oil", "Black Mask", "Wax", "Wax Sticks", "Shaving Cream",
+    "Dish Soap", "Paper Towels", "Mouth Wash", "Sponges", "Vinegar", "Purified Water", "Windex",
+    "All Purpose Cleaner", "Garbage Bag (Black)", "Garbage Bag (White)", "Incense", "Handsoap",
+    "Floor Cleaner", "Detergent", "Toilet Paper",
+    "Coffee Cups", "Sugar", "Straws", "Cocktail Napkins", "Coffee", "Plastic Cups", "Candy",
+    "Coca-Cola", "Coca Zero", "Sprite", "Ginger", "Sparkling Water"
+  ];
+
+  function scRenderChips() {
+    var wrap = $("#scSupplyChips");
+    if (!wrap || wrap.childNodes.length) return;
+    SC_SUPPLIES.forEach(function (name) {
+      var c = document.createElement("button");
+      c.type = "button"; c.textContent = name;
+      c.style.cssText = "font-size:12px;font-weight:700;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:6px 10px;cursor:pointer";
+      c.addEventListener("click", function () {
+        var ta = $("#scLowItems");
+        var items = ta.value.split(",").map(function (x) { return x.trim(); }).filter(Boolean)
+          .filter(function (x) { return !/^nothing\s+low$/i.test(x); });
+        var idx = items.indexOf(name);
+        if (idx === -1) { items.push(name); c.style.color = "var(--mustard)"; c.style.borderColor = "var(--mustard)"; }
+        else { items.splice(idx, 1); c.style.color = "var(--muted)"; c.style.borderColor = "var(--line)"; }
+        ta.value = items.join(", ");
+      });
+      wrap.appendChild(c);
+    });
+  }
+
+  function scFail(msg) {
+    var err = $("#scError");
+    err.textContent = msg; err.style.display = "block";
+    var btn = $("#scSubmit"); btn.disabled = false; btn.textContent = "Submit Shop Check";
+  }
+
+  function scRenderFiles() {
+    var list = $("#scFileList");
+    if (!scUploads.length) { list.textContent = "No photos added yet (optional)."; return; }
+    list.innerHTML = "";
+    scUploads.forEach(function (f, idx) {
+      var row = document.createElement("div");
+      row.style.cssText = "display:flex;justify-content:space-between;align-items:center;padding:3px 0";
+      var nm = document.createElement("span"); nm.textContent = f.name;
+      var x = document.createElement("button");
+      x.type = "button"; x.textContent = "✕";
+      x.style.cssText = "background:none;border:none;color:var(--no);cursor:pointer;font-size:14px";
+      x.onclick = function () { scUploads.splice(idx, 1); scRenderFiles(); };
+      row.appendChild(nm); row.appendChild(x); list.appendChild(row);
+    });
+  }
+
+  function showShop(shop) {
+    scShop = shop;
+    $("#chooserCard").style.display = "none";
+    form.style.display = "none";
+    $("#officeCard").style.display = "none";
+    $("#areaCard").style.display = "none";
+    $("#dashCard").style.display = "none";
+    $("#kCard").style.display = "none";
+    $("#shopCard").style.display = "";
+    $("#scShopName").textContent = shop;
+    $("#scError").style.display = "none";
+    $("#scSuccess").style.display = "none";
+    if (!showShop.__init) {
+      showShop.__init = true;
+      scRenderFiles();
+      scRenderChips();
+      $("#scClean").addEventListener("change", function () {
+        $("#scCleanNotesWrap").style.display = this.value === "Needs attention" ? "" : "none";
+      });
+      $("#scWorking").addEventListener("change", function () {
+        $("#scWorkNotesWrap").style.display = this.value === "Something broken" ? "" : "none";
+      });
+      $("#scFiles").addEventListener("change", function () {
+        var files = Array.prototype.slice.call(this.files || []); this.value = "";
+        $("#scError").style.display = "none";
+        files.forEach(function (file) {
+          var ext = (String(file.name).toLowerCase().match(/\.([a-z0-9]+)$/) || [])[1] || "";
+          if (["pdf", "jpg", "jpeg", "png", "heic"].indexOf(ext) === -1) { scFail("“" + file.name + "” isn't an accepted type (PDF, JPG, PNG, HEIC)."); return; }
+          if (file.size > MAX_FILE_MB * 1024 * 1024) { scFail("“" + file.name + "” is larger than " + MAX_FILE_MB + " MB."); return; }
+          compressImage(file).then(function (obj) {
+            if (!obj) { scFail("Couldn't read “" + file.name + "”."); return; }
+            scUploads.push(obj); scRenderFiles();
+          });
+        });
+      });
+      $("#scBack").addEventListener("click", showChooser);
+      $("#scSubmit").addEventListener("click", scSubmit);
+    }
+  }
+
+  function scSubmit() {
+    var err = $("#scError"), ok = $("#scSuccess"), btn = $("#scSubmit");
+    err.style.display = "none"; ok.style.display = "none";
+    var cleanAns = $("#scClean").value, cleanNotes = $("#scCleanNotes").value.trim();
+    var workAns = $("#scWorking").value, workNotes = $("#scWorkNotes").value.trim();
+    var lowItems = $("#scLowItems").value.trim(), notes = $("#scNotes").value.trim();
+    if (!cleanAns) { scFail("Say whether the shop is clean and presentable."); return; }
+    if (cleanAns === "Needs attention" && !cleanNotes) { scFail("Describe what needs attention."); return; }
+    if (!workAns) { scFail("Say whether everything is working."); return; }
+    if (workAns === "Something broken" && !workNotes) { scFail("Describe what is broken."); return; }
+    if (!lowItems) { scFail('List what is running low — or write "nothing low" if fully stocked.'); return; }
+    btn.disabled = true; btn.textContent = "Submitting…";
     fetch(ENDPOINT_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ action: "sparkcheck", token: session.token, sparkType: "weekly-auto" })
+      method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: "shopcheck", token: session && session.token, submissionId: uuid(),
+        location: scShop, clean: cleanAns, cleanNotes: cleanNotes,
+        working: workAns, workingNotes: workNotes, lowItems: lowItems, notes: notes,
+        uploads: { shopcheck: scUploads }
+      })
     })
       .then(function (r) { return r.json(); })
       .then(function (res) {
-        btn.disabled = false;
+        btn.disabled = false; btn.textContent = "Submit Shop Check";
         if (res && res.status === "success") {
-          alert("\u26a1 Queued \u2014 Spark will run the auto check and report back.");
+          ok.innerHTML = "✅ <b>Shop check submitted!</b> Reference " + escapeHtml(res.ref || "") +
+            ". It was emailed to the office and saved into this week's folder in Drive.";
+          ok.style.display = ""; ok.scrollIntoView({ behavior: "smooth", block: "center" });
+          scUploads = []; scRenderFiles();
+          $("#scClean").value = ""; $("#scCleanNotes").value = ""; $("#scCleanNotesWrap").style.display = "none";
+          $("#scWorking").value = ""; $("#scWorkNotes").value = ""; $("#scWorkNotesWrap").style.display = "none";
+          $("#scLowItems").value = ""; $("#scNotes").value = "";
+        } else if (res && /access code|session has expired/i.test(res.message || "")) {
+          clearSession(); session = null; $("#shopCard").style.display = "none"; showGate();
         } else {
-          alert((res && res.message) || "Could not queue Spark Auto. Please try again.");
+          scFail((res && res.message) || "The server could not save the shop check. Please try again.");
         }
       })
-      .catch(function () { btn.disabled = false; alert("Couldn't reach the server. Check your connection and try again."); });
+      .catch(function () { scFail("Couldn't reach the server. Check your connection and try again."); });
   }
 
   var formStarted = false;
@@ -1151,7 +1254,7 @@
     $("#areaCard").style.display = "none";
     $("#dashCard").style.display = "none";
     $("#kCard").style.display = "none";
-    $("#locCard").style.display = "none";
+    $("#shopCard").style.display = "none";
     form.style.display = "";
     if (!formStarted) { formStarted = true; startForm(); }
   }
@@ -1164,9 +1267,7 @@
   var odUploads = [];
 
   // =========================================================================
-  // DEPRECATED: AREA MANAGER CHECK-IN (Dario) — Tuesday Check and Friday Sales Check.
-  // The chooser buttons were removed; location check-ins + Spark Auto replaced
-  // these person-based flows. Code kept for reference only — unreachable.
+  // AREA MANAGER CHECK-IN (Dario) — Tuesday Check and Friday Sales Check
   // =========================================================================
   var AREA_SHOPS = ["Edgewater", "Pinecrest", "Studio"];
   var areaMode = "";
@@ -1177,7 +1278,7 @@
     $("#officeCard").style.display = "none";
     $("#dashCard").style.display = "none";
     $("#kCard").style.display = "none";
-    $("#locCard").style.display = "none";
+    $("#shopCard").style.display = "none";
     $("#areaCard").style.display = "";
     initArea();
   }
@@ -1408,9 +1509,7 @@
   }
 
   // =========================================================================
-  // DEPRECATED: KRYSTAL'S CHECK-IN — payroll, Tuesday duties, sales vs last week, card
-  // expenses. The chooser buttons were removed; location check-ins + Spark Auto
-  // replaced these person-based flows. Code kept for reference only — unreachable.
+  // KRYSTAL'S CHECK-IN — payroll, Tuesday duties, sales vs last week, card
   // =========================================================================
   var kMode = "";
 
@@ -1420,7 +1519,7 @@
     $("#officeCard").style.display = "none";
     $("#areaCard").style.display = "none";
     $("#dashCard").style.display = "none";
-    $("#locCard").style.display = "none";
+    $("#shopCard").style.display = "none";
     $("#kCard").style.display = "";
     initK();
   }
@@ -1657,7 +1756,8 @@
           ok.innerHTML = "✅ <strong>Check-in submitted!</strong> Nicole has been emailed.<br>Reference: " + escapeHtml(res.ref || "");
           ok.style.display = ""; ok.scrollIntoView({ behavior: "smooth", block: "center" });
         } else if (res && /access code|session has expired/i.test(res.message || "")) {
-          clearSession(); session = null; $("#kCard").style.display = "none"; showGate();
+          clearSession(); session = null; $("#kCard").style.display = "none";
+    $("#shopCard").style.display = "none"; showGate();
         } else {
           kFail((res && res.message) || "The server could not save the check-in. Please try again.");
         }
@@ -1665,212 +1765,8 @@
       .catch(function () { btn.disabled = false; btn.textContent = "Submit Check-in"; kFail("Couldn't reach the server. Check your connection and try again."); });
   }
 
+
   // =========================================================================
-  // LOCATION CHECK-IN — inventory + physical shop work, per location.
-  // Generalized from the old Juan/Edgewater-only flow. Dead simple: 2 short
-  // steps, big buttons, minimal typing. The location comes from the chooser
-  // button tapped and is shown prominently; it is NOT editable in this flow.
-  // Submits with action "locationcheck" through the same endpoint/auth/upload
-  // plumbing.
-  // =========================================================================
-  var LOC_SUPPLIES = [
-    "Black Towels", "White Towels", "Barbicide", "Towel Oil", "Black Mask", "Wax", "Wax Sticks", "Shaving Cream",
-    "Dish Soap", "Paper Towels", "Mouth Wash", "Sponges", "Vinegar", "Purified Water", "Windex",
-    "All Purpose Cleaner", "Garbage Bag (Black)", "Garbage Bag (White)", "Incense", "Handsoap",
-    "Floor Cleaner", "Detergent", "Toilet Paper",
-    "Coffee Cups", "Sugar", "Straws", "Cocktail Napkins", "Coffee", "Plastic Cups", "Candy",
-    "Coca-Cola", "Coca Zero", "Sprite", "Ginger", "Sparkling Water"
-  ];
-  var LOC_CHECKS = [
-    { key: "stations", label: "Stations" },
-    { key: "steamer", label: "Steamer" },
-    { key: "lather", label: "Lather machine" },
-    { key: "deepclean", label: "Deep clean" },
-    { key: "condition", label: "General shop condition" },
-    { key: "maintenance", label: "Maintenance / equipment issues" }
-  ];
-  var locMode = "";
-  var locLocation = "";
-
-  function showLoc(location) {
-    locLocation = location;
-    $("#chooserCard").style.display = "none";
-    form.style.display = "none";
-    $("#officeCard").style.display = "none";
-    $("#areaCard").style.display = "none";
-    $("#dashCard").style.display = "none";
-    $("#kCard").style.display = "none";
-    // Location is prominent and not editable — it comes from the button tapped.
-    $("#locTitle").textContent = "\uD83D\uDCE6 " + location + " Check-in";
-    $("#locBrand").textContent = location;
-    $("#locHint").textContent = "Quick in-shop check for " + location + ". Two short steps \u2014 big buttons, no essays.";
-    $("#locCard").style.display = "";
-    initLoc();
-  }
-
-  function locFail(msg) {
-    var e = $("#locError");
-    e.textContent = msg; e.style.display = "block";
-    e.scrollIntoView({ behavior: "smooth", block: "center" });
-  }
-
-  function locInvRow(name) {
-    return '<div class="row-item loc-inv-row">' +
-      '<button type="button" class="row-remove" data-lrm aria-label="Remove item">\u00d7</button>' +
-      '<div class="row-grid">' +
-      '<div><span class="mini-label">Product</span><input type="text" data-lname value="' + escapeHtml(name || "") + '" placeholder="Product name"></div>' +
-      '<div class="two-col">' +
-      '<div><span class="mini-label">On hand</span><input type="number" inputmode="numeric" min="0" data-lqty placeholder="0"></div>' +
-      '<div><span class="mini-label">Need to order?</span><label style="display:flex;align-items:center;gap:10px;background:var(--field);border:1.5px solid var(--line);border-radius:10px;padding:12px;min-height:50px;cursor:pointer;font-weight:700;font-size:14px"><input type="checkbox" data-llow style="width:22px;height:22px"> Low — order</label></div>' +
-      "</div></div></div>";
-  }
-
-  function buildLocForms() {
-    var inv = '<div class="group"><h3>What\u2019s on the shelf?</h3>' +
-      '<p class="group-note">Enter how many you have. Tick \u201cLow — order\u201d for anything running out.</p>' +
-      '<div class="rows" id="locInvRows">';
-    LOC_SUPPLIES.forEach(function (s) { inv += locInvRow(s); });
-    inv += '</div><button type="button" class="add-btn" id="locAddRow">\uff0b Add item</button></div>';
-    $("#locInvForm").innerHTML = inv;
-
-    var shop = '<div class="group"><h3>Walk the shop</h3>' +
-      '<p class="group-note">Tap <b>Pass</b> or <b>Issue</b> for each. Add a photo and a quick note for anything wrong.</p>';
-    LOC_CHECKS.forEach(function (c) {
-      shop += '<div style="border-top:1px solid var(--line);padding-top:12px;margin-top:12px">' +
-        "<b>" + escapeHtml(c.label) + "</b>" +
-        segHtml("lchk_" + c.key, [["Pass", "ok"], ["Issue", "no"]]) +
-        '<div class="uploader" data-upload="loc_' + c.key + '" style="margin-top:10px">' +
-        '<label class="upload-btn"><input type="file" class="upload-input" accept="image/*,application/pdf" multiple>\ud83d\udcf7 Add photo</label>' +
-        '<div class="thumbs"></div></div>' +
-        '<div class="field" data-lnoteswrap="' + c.key + '" style="display:none;margin-top:10px"><label>What\u2019s wrong? *</label>' +
-        '<textarea data-lnotes="' + c.key + '" placeholder="Quick note"></textarea></div></div>';
-    });
-    shop += "</div>";
-    $("#locShopForm").innerHTML = shop;
-  }
-
-  function locSetMode(mode) {
-    locMode = mode;
-    $("#locTabInv").classList.toggle("on", mode === "inv");
-    $("#locTabShop").classList.toggle("on", mode === "shop");
-    $("#locInvForm").style.display = mode === "inv" ? "" : "none";
-    $("#locShopForm").style.display = mode === "shop" ? "" : "none";
-    $("#locSubmit").style.display = mode ? "" : "none";
-    $("#locError").style.display = "none";
-  }
-
-  function locCollect() {
-    var d = { mode: locMode, inventory: [], checks: [] };
-    $$("#locInvRows .loc-inv-row").forEach(function (r) {
-      d.inventory.push({
-        name: r.querySelector("[data-lname]").value.trim(),
-        qty: r.querySelector("[data-lqty]").value.trim(),
-        low: !!r.querySelector("[data-llow]").checked
-      });
-    });
-    var shop = $("#locShopForm");
-    LOC_CHECKS.forEach(function (c) {
-      var notesEl = shop.querySelector('[data-lnotes="' + c.key + '"]');
-      d.checks.push({
-        key: c.key, label: c.label,
-        status: segValue(shop, "lchk_" + c.key),
-        notes: notesEl ? notesEl.value.trim() : ""
-      });
-    });
-    return d;
-  }
-
-  function locValidate(d) {
-    var p = [];
-    if (!d.inventory.length) p.push("Add at least one inventory item.");
-    d.inventory.forEach(function (r, i) {
-      if (!r.name) p.push("Inventory row " + (i + 1) + ": enter the product name.");
-      if (r.qty === "" || isNaN(parseFloat(r.qty)) || parseFloat(r.qty) < 0) p.push((r.name || "Row " + (i + 1)) + ": enter how many are on hand.");
-    });
-    d.checks.forEach(function (c) {
-      if (!c.status) p.push(c.label + ": tap Pass or Issue.");
-      else if (c.status === "Issue" && !c.notes) p.push(c.label + ": add a quick note about the issue.");
-    });
-    return p;
-  }
-
-  function locClearBuckets() {
-    Object.keys(uploads).forEach(function (b) { if (b.indexOf("loc_") === 0) delete uploads[b]; });
-  }
-
-  function locSubmitForm() {
-    var btn = $("#locSubmit"), ok = $("#locSuccess");
-    $("#locError").style.display = "none"; ok.style.display = "none";
-    if (!locMode) { locFail("Pick step 1 or 2 first."); return; }
-    var d = locCollect();
-    var problems = locValidate(d);
-    if (problems.length) { locFail(problems.join(" ")); return; }
-    var locUploads = {};
-    Object.keys(uploads).forEach(function (b) {
-      if (b.indexOf("loc_") === 0 && (uploads[b] || []).length) locUploads[b] = uploads[b];
-    });
-    var payload = {
-      action: "locationcheck",
-      token: session.token,
-      submissionId: uuid(),
-      location: locLocation,
-      inventory: d.inventory,
-      checks: d.checks,
-      uploads: locUploads
-    };
-    btn.disabled = true; btn.textContent = "Submitting\u2026";
-    fetch(ENDPOINT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) })
-      .then(function (r) { return r.json(); })
-      .then(function (res) {
-        btn.disabled = false; btn.textContent = "Submit Check";
-        if (res && res.status === "success") {
-          locClearBuckets();
-          ok.innerHTML = "\u2705 <strong>Check submitted!</strong> Nicole has been emailed.<br>Reference: " + escapeHtml(res.ref || "");
-          ok.style.display = ""; ok.scrollIntoView({ behavior: "smooth", block: "center" });
-        } else if (res && /access code|session has expired/i.test(res.message || "")) {
-          clearSession(); session = null; $("#locCard").style.display = "none"; showGate();
-        } else {
-          locFail((res && res.message) || "The server could not save the check. Please try again.");
-        }
-      })
-      .catch(function () { btn.disabled = false; btn.textContent = "Submit Check"; locFail("Couldn't reach the server. Check your connection and try again."); });
-  }
-
-  function initLoc() {
-    if (initLoc.__init) return;
-    initLoc.__init = true;
-    buildLocForms();
-    $$(".uploader", $("#locShopForm")).forEach(initUploader);
-    $("#locCard").addEventListener("click", function (e) {
-      var rm = e.target.closest("[data-lrm]");
-      if (rm) { var row = rm.closest(".loc-inv-row"); if (row) row.remove(); return; }
-      var lab = e.target.closest(".seg label");
-      if (!lab) return;
-      var seg = lab.parentElement;
-      seg.dataset.val = lab.dataset.val;
-      Array.prototype.slice.call(seg.children).forEach(function (l) { l.classList.remove("sel-ok", "sel-no", "sel-na"); });
-      lab.classList.add("sel-" + lab.dataset.tone);
-      var k = seg.dataset.seg, v = seg.dataset.val;
-      if (k.indexOf("lchk_") === 0) {
-        var key = k.slice(5);
-        var wrap = $("#locShopForm").querySelector('[data-lnoteswrap="' + key + '"]');
-        if (wrap) wrap.style.display = v === "Issue" ? "" : "none";
-      }
-    });
-    $("#locAddRow").addEventListener("click", function () {
-      var host = $("#locInvRows");
-      host.insertAdjacentHTML("beforeend", locInvRow(""));
-      var rows = host.querySelectorAll(".loc-inv-row");
-      var last = rows[rows.length - 1];
-      last.scrollIntoView({ behavior: "smooth", block: "center" });
-      var inp = last.querySelector("[data-lname]"); if (inp) inp.focus();
-    });
-    $("#locTabInv").addEventListener("click", function () { locSetMode("inv"); });
-    $("#locTabShop").addEventListener("click", function () { locSetMode("shop"); });
-    $("#locBack").addEventListener("click", showChooser);
-    $("#locSubmit").addEventListener("click", locSubmitForm);
-  }
-
   // ADMIN DASHBOARD (Nicole) — read-only: what's done, what's missing
   // =========================================================================
   function showDash() {
@@ -1879,7 +1775,7 @@
     $("#officeCard").style.display = "none";
     $("#areaCard").style.display = "none";
     $("#kCard").style.display = "none";
-    $("#locCard").style.display = "none";
+    $("#shopCard").style.display = "none";
     $("#dashCard").style.display = "";
     if (!showDash.__init) {
       showDash.__init = true;
@@ -1986,6 +1882,12 @@
           dashRow(!!d.krystal.payroll, "Payroll (Sun–Mon)", d.krystal.payroll ? escapeHtml(d.krystal.payroll.summary) : "Not submitted yet", d.krystal.payroll ? d.krystal.payroll.ref : null) +
           dashRow(!!d.krystal.tuesday, "Tuesday check-in (sales + week " + d.weekOfMonth + " duties)", d.krystal.tuesday ? escapeHtml(d.krystal.tuesday.summary) : "Not submitted yet", d.krystal.tuesday ? d.krystal.tuesday.ref : null) +
           "</div>";
+        h += '<div class="group"><h3>🏪 Shop checks this month</h3>';
+        AREA_SHOPS.forEach(function (shop) {
+          var sc = d.shopChecks ? d.shopChecks[shop] : null;
+          h += dashRow(!!sc, shop, sc ? escapeHtml(sc.summary + " · by " + sc.by) : "Not done yet this month", sc ? sc.ref : null);
+        });
+        h += "</div>";
         h += '<div class="group"><h3>🗂️ Office documents this week (' + d.office.length + ")</h3>";
         if (!d.office.length) h += '<p class="hint">None filed yet this week.</p>';
         d.office.forEach(function (o) {
@@ -2008,15 +1910,15 @@
     $("#areaCard").style.display = "none";
     $("#dashCard").style.display = "none";
     $("#kCard").style.display = "none";
-    $("#locCard").style.display = "none";
+    $("#shopCard").style.display = "none";
     $("#officeCard").style.display = "";
     initOffice();
   }
 
   function odToggle() {
     var t = $("#odType").value;
-    $("#odLocWrap").style.display = (t === "commission" || t === "hostess") ? "" : "none";
-    $("#odWeekWrap").style.display = (t === "commission" || t === "hostess" || t === "bank") ? "" : "none";
+    $("#odLocWrap").style.display = (t === "commission" || t === "hostess" || t === "receipts") ? "" : "none";
+    $("#odWeekWrap").style.display = (t === "commission" || t === "hostess" || t === "bank" || t === "receipts") ? "" : "none";
     $("#odMonthWrap").style.display = (t === "expense") ? "" : "none";
   }
 
@@ -2078,7 +1980,7 @@
     err.style.display = "none"; ok.style.display = "none";
     var t = $("#odType").value;
     if (!t) { odFail("Please choose a document type."); return; }
-    var needsLoc = (t === "commission" || t === "hostess");
+    var needsLoc = (t === "commission" || t === "hostess" || t === "receipts");
     var location = $("#odLocation").value;
     if (needsLoc && !location) { odFail("Please choose a location."); return; }
     var weekStart = $("#odWeekStart").value, weekEnd = $("#odWeekEnd").value, month = $("#odMonth").value;
