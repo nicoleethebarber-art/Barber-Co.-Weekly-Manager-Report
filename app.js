@@ -1067,8 +1067,7 @@
 
   /** After a verified session: admins choose report vs office docs; managers go straight to the report. */
   function afterAuth() {
-    if (session && session.isAdmin) { showChooser(); return; }
-    showReportForm();
+    showChooser();
   }
 
   function showChooser() {
@@ -1077,12 +1076,28 @@
     $("#areaCard").style.display = "none";
     $("#dashCard").style.display = "none";
     $("#kCard").style.display = "none";
+    $("#shopCard").style.display = "none";
     $("#chooserCard").style.display = "";
     var nm = String((session && session.name) || "").trim();
     var isDario = /^dario\b/i.test(nm), isKrystal = /^krystal\b/i.test(nm), isNicole = /^nicole\b/i.test(nm);
+    var isSpark = /^spark\b/i.test(nm);
     $("#chooseArea").style.display = (isDario || isNicole) ? "" : "none";
     $("#chooseK").style.display = (isKrystal || isNicole) ? "" : "none";
     $("#chooseDash").style.display = isNicole ? "" : "none";
+    // Spark (AI assistant) only submits documents — no report, no shop checks.
+    $("#chooseReport").style.display = isSpark ? "none" : "";
+    $("#chooseOffice").style.display = (session && session.isAdmin) ? "" : "none";
+    if (isSpark) $("#chooseOffice").textContent = "📎 Submit Receipts & Documents";
+    // Shop check buttons: admins see all three, a shop manager sees their own.
+    Array.prototype.forEach.call(document.querySelectorAll(".shopBtn"), function (b) {
+      var shop = b.getAttribute("data-shop");
+      var show = false;
+      if (isSpark) show = false;
+      else if (session && session.isAdmin) show = true;
+      else if (session && session.location && session.location.toLowerCase().indexOf(shop.toLowerCase()) !== -1) show = true;
+      b.style.display = show ? "" : "none";
+      if (!b.__wired) { b.__wired = true; b.addEventListener("click", function () { showShop(shop); }); }
+    });
     if (!showChooser.__init) {
       showChooser.__init = true;
       $("#chooseReport").addEventListener("click", showReportForm);
@@ -1093,6 +1108,114 @@
     }
   }
 
+  // =========================================================================
+  // SHOP CHECK & INVENTORY — monthly, by each shop's manager
+  // =========================================================================
+  var scUploads = [];
+  var scShop = "";
+
+  function scFail(msg) {
+    var err = $("#scError");
+    err.textContent = msg; err.style.display = "block";
+    var btn = $("#scSubmit"); btn.disabled = false; btn.textContent = "Submit Shop Check";
+  }
+
+  function scRenderFiles() {
+    var list = $("#scFileList");
+    if (!scUploads.length) { list.textContent = "No photos added yet (optional)."; return; }
+    list.innerHTML = "";
+    scUploads.forEach(function (f, idx) {
+      var row = document.createElement("div");
+      row.style.cssText = "display:flex;justify-content:space-between;align-items:center;padding:3px 0";
+      var nm = document.createElement("span"); nm.textContent = f.name;
+      var x = document.createElement("button");
+      x.type = "button"; x.textContent = "✕";
+      x.style.cssText = "background:none;border:none;color:var(--no);cursor:pointer;font-size:14px";
+      x.onclick = function () { scUploads.splice(idx, 1); scRenderFiles(); };
+      row.appendChild(nm); row.appendChild(x); list.appendChild(row);
+    });
+  }
+
+  function showShop(shop) {
+    scShop = shop;
+    $("#chooserCard").style.display = "none";
+    form.style.display = "none";
+    $("#officeCard").style.display = "none";
+    $("#areaCard").style.display = "none";
+    $("#dashCard").style.display = "none";
+    $("#kCard").style.display = "none";
+    $("#shopCard").style.display = "";
+    $("#scShopName").textContent = shop;
+    $("#scError").style.display = "none";
+    $("#scSuccess").style.display = "none";
+    if (!showShop.__init) {
+      showShop.__init = true;
+      scRenderFiles();
+      $("#scClean").addEventListener("change", function () {
+        $("#scCleanNotesWrap").style.display = this.value === "Needs attention" ? "" : "none";
+      });
+      $("#scWorking").addEventListener("change", function () {
+        $("#scWorkNotesWrap").style.display = this.value === "Something broken" ? "" : "none";
+      });
+      $("#scFiles").addEventListener("change", function () {
+        var files = Array.prototype.slice.call(this.files || []); this.value = "";
+        $("#scError").style.display = "none";
+        files.forEach(function (file) {
+          var ext = (String(file.name).toLowerCase().match(/\.([a-z0-9]+)$/) || [])[1] || "";
+          if (["pdf", "jpg", "jpeg", "png", "heic"].indexOf(ext) === -1) { scFail("“" + file.name + "” isn't an accepted type (PDF, JPG, PNG, HEIC)."); return; }
+          if (file.size > MAX_FILE_MB * 1024 * 1024) { scFail("“" + file.name + "” is larger than " + MAX_FILE_MB + " MB."); return; }
+          compressImage(file).then(function (obj) {
+            if (!obj) { scFail("Couldn't read “" + file.name + "”."); return; }
+            scUploads.push(obj); scRenderFiles();
+          });
+        });
+      });
+      $("#scBack").addEventListener("click", showChooser);
+      $("#scSubmit").addEventListener("click", scSubmit);
+    }
+  }
+
+  function scSubmit() {
+    var err = $("#scError"), ok = $("#scSuccess"), btn = $("#scSubmit");
+    err.style.display = "none"; ok.style.display = "none";
+    var cleanAns = $("#scClean").value, cleanNotes = $("#scCleanNotes").value.trim();
+    var workAns = $("#scWorking").value, workNotes = $("#scWorkNotes").value.trim();
+    var lowItems = $("#scLowItems").value.trim(), notes = $("#scNotes").value.trim();
+    if (!cleanAns) { scFail("Say whether the shop is clean and presentable."); return; }
+    if (cleanAns === "Needs attention" && !cleanNotes) { scFail("Describe what needs attention."); return; }
+    if (!workAns) { scFail("Say whether everything is working."); return; }
+    if (workAns === "Something broken" && !workNotes) { scFail("Describe what is broken."); return; }
+    if (!lowItems) { scFail('List what is running low — or write "nothing low" if fully stocked.'); return; }
+    btn.disabled = true; btn.textContent = "Submitting…";
+    fetch(ENDPOINT_URL, {
+      method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: "shopcheck", token: session && session.token, submissionId: uuid(),
+        location: scShop, clean: cleanAns, cleanNotes: cleanNotes,
+        working: workAns, workingNotes: workNotes, lowItems: lowItems, notes: notes,
+        uploads: { shopcheck: scUploads }
+      })
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        btn.disabled = false; btn.textContent = "Submit Shop Check";
+        if (res && res.status === "success") {
+          ok.innerHTML = "✅ <b>Shop check submitted!</b> Reference " + escapeHtml(res.ref || "") +
+            ". It was emailed to the office and saved into this week's folder in Drive.";
+          ok.style.display = ""; ok.scrollIntoView({ behavior: "smooth", block: "center" });
+          scUploads = []; scRenderFiles();
+          $("#scClean").value = ""; $("#scCleanNotes").value = ""; $("#scCleanNotesWrap").style.display = "none";
+          $("#scWorking").value = ""; $("#scWorkNotes").value = ""; $("#scWorkNotesWrap").style.display = "none";
+          $("#scLowItems").value = ""; $("#scNotes").value = "";
+        } else if (res && /access code|session has expired/i.test(res.message || "")) {
+          clearSession(); session = null; $("#shopCard").style.display = "none"; showGate();
+        } else {
+          scFail((res && res.message) || "The server could not save the shop check. Please try again.");
+        }
+      })
+      .catch(function () { scFail("Couldn't reach the server. Check your connection and try again."); });
+  }
+
   var formStarted = false;
   function showReportForm() {
     $("#chooserCard").style.display = "none";
@@ -1100,6 +1223,7 @@
     $("#areaCard").style.display = "none";
     $("#dashCard").style.display = "none";
     $("#kCard").style.display = "none";
+    $("#shopCard").style.display = "none";
     form.style.display = "";
     if (!formStarted) { formStarted = true; startForm(); }
   }
@@ -1123,6 +1247,7 @@
     $("#officeCard").style.display = "none";
     $("#dashCard").style.display = "none";
     $("#kCard").style.display = "none";
+    $("#shopCard").style.display = "none";
     $("#areaCard").style.display = "";
     initArea();
   }
@@ -1363,6 +1488,7 @@
     $("#officeCard").style.display = "none";
     $("#areaCard").style.display = "none";
     $("#dashCard").style.display = "none";
+    $("#shopCard").style.display = "none";
     $("#kCard").style.display = "";
     initK();
   }
@@ -1599,7 +1725,8 @@
           ok.innerHTML = "✅ <strong>Check-in submitted!</strong> Nicole has been emailed.<br>Reference: " + escapeHtml(res.ref || "");
           ok.style.display = ""; ok.scrollIntoView({ behavior: "smooth", block: "center" });
         } else if (res && /access code|session has expired/i.test(res.message || "")) {
-          clearSession(); session = null; $("#kCard").style.display = "none"; showGate();
+          clearSession(); session = null; $("#kCard").style.display = "none";
+    $("#shopCard").style.display = "none"; showGate();
         } else {
           kFail((res && res.message) || "The server could not save the check-in. Please try again.");
         }
@@ -1616,6 +1743,7 @@
     $("#officeCard").style.display = "none";
     $("#areaCard").style.display = "none";
     $("#kCard").style.display = "none";
+    $("#shopCard").style.display = "none";
     $("#dashCard").style.display = "";
     if (!showDash.__init) {
       showDash.__init = true;
@@ -1722,6 +1850,12 @@
           dashRow(!!d.krystal.payroll, "Payroll (Sun–Mon)", d.krystal.payroll ? escapeHtml(d.krystal.payroll.summary) : "Not submitted yet", d.krystal.payroll ? d.krystal.payroll.ref : null) +
           dashRow(!!d.krystal.tuesday, "Tuesday check-in (sales + week " + d.weekOfMonth + " duties)", d.krystal.tuesday ? escapeHtml(d.krystal.tuesday.summary) : "Not submitted yet", d.krystal.tuesday ? d.krystal.tuesday.ref : null) +
           "</div>";
+        h += '<div class="group"><h3>🏪 Shop checks this month</h3>';
+        AREA_SHOPS.forEach(function (shop) {
+          var sc = d.shopChecks ? d.shopChecks[shop] : null;
+          h += dashRow(!!sc, shop, sc ? escapeHtml(sc.summary + " · by " + sc.by) : "Not done yet this month", sc ? sc.ref : null);
+        });
+        h += "</div>";
         h += '<div class="group"><h3>🗂️ Office documents this week (' + d.office.length + ")</h3>";
         if (!d.office.length) h += '<p class="hint">None filed yet this week.</p>';
         d.office.forEach(function (o) {
@@ -1744,14 +1878,15 @@
     $("#areaCard").style.display = "none";
     $("#dashCard").style.display = "none";
     $("#kCard").style.display = "none";
+    $("#shopCard").style.display = "none";
     $("#officeCard").style.display = "";
     initOffice();
   }
 
   function odToggle() {
     var t = $("#odType").value;
-    $("#odLocWrap").style.display = (t === "commission" || t === "hostess") ? "" : "none";
-    $("#odWeekWrap").style.display = (t === "commission" || t === "hostess" || t === "bank") ? "" : "none";
+    $("#odLocWrap").style.display = (t === "commission" || t === "hostess" || t === "receipts") ? "" : "none";
+    $("#odWeekWrap").style.display = (t === "commission" || t === "hostess" || t === "bank" || t === "receipts") ? "" : "none";
     $("#odMonthWrap").style.display = (t === "expense") ? "" : "none";
   }
 
@@ -1813,7 +1948,7 @@
     err.style.display = "none"; ok.style.display = "none";
     var t = $("#odType").value;
     if (!t) { odFail("Please choose a document type."); return; }
-    var needsLoc = (t === "commission" || t === "hostess");
+    var needsLoc = (t === "commission" || t === "hostess" || t === "receipts");
     var location = $("#odLocation").value;
     if (needsLoc && !location) { odFail("Please choose a location."); return; }
     var weekStart = $("#odWeekStart").value, weekEnd = $("#odWeekEnd").value, month = $("#odMonth").value;

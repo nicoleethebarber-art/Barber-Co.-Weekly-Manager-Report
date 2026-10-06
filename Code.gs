@@ -165,7 +165,7 @@ function doGet(e) {
   var p = (e && e.parameter) || {};
   // One-click approve / reject straight from the notification email.
   if (p.a === 'approve' || p.a === 'reject') return handleDecision_(p);
-  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v13 — report viewer' });
+  return json({ status: 'ok', service: 'Barber & Co. Weekly Manager Report', version: 'v14 — shop checks & Spark receipts' });
 }
 
 // ---- Signed approval links -------------------------------------------------
@@ -281,6 +281,9 @@ function doPost(e) {
 
     // 2d-quater) KRYSTAL'S CHECK-IN — payroll, Tuesday, sales, card expenses.
     if (data.action === 'krystalcheck') return handleKrystalCheck_(data, mgr);
+
+    // 2d-quater-bis) SHOP CHECK & INVENTORY — monthly, by each shop's manager.
+    if (data.action === 'shopcheck') return handleShopCheck_(data, mgr);
 
     // 2d-quinquies) ADMIN DASHBOARD — read-only status overview for Nicole.
     if (data.action === 'dashboard') return handleDashboard_(data, mgr, isAdmin);
@@ -1546,7 +1549,10 @@ var OFFICE_TYPES = {
   commission: { label: 'Commission Payout', perLocation: true, period: 'week' },
   hostess: { label: 'Hostess Hours Report', perLocation: true, period: 'week' },
   bank: { label: 'Bank & Checks', perLocation: false, period: 'week' },
-  expense: { label: 'Monthly Expense Report', perLocation: false, period: 'month' }
+  expense: { label: 'Monthly Expense Report', perLocation: false, period: 'month' },
+  // Extra receipts (Amazon / Instacart / anything forwarded to Spark) file
+  // into that shop's weekly MER folder, right next to the MER and its receipts.
+  receipts: { label: 'Extra Receipts', perLocation: true, period: 'week', merTree: true }
 };
 var OFFICE_EXTRA_EXT = ['xlsx', 'xls', 'csv'];
 var OFFICE_EXTRA_MIME = [
@@ -1596,10 +1602,18 @@ function handleOfficeDoc_(data, mgr, isAdmin) {
   var prior = cache.get(key);
   if (prior) { prior = JSON.parse(prior); return json({ status: 'success', ref: prior.ref, filedTo: prior.filedTo, duplicate: true }); }
 
-  var base = officeBase_(String(data.docType), location);
-  if (!base) return json({ status: 'error', message: 'No Drive folder is set up for that document type. Check the "Office Folders" tab in the spreadsheet.' });
-
-  var target = (data.docType === 'expense') ? base : officeMonthParent_(base, t.period === 'week' ? d2 : monthDate);
+  var target;
+  if (t.merTree) {
+    // Receipts go into the same weekly folder the MER files to.
+    var dest = officialFolder_(location);
+    if (!dest) return json({ status: 'error', message: 'No official folder set for "' + location + '". Check the "Location Folders" tab.' });
+    var ws = clean_(data.weekStart, 20), we = clean_(data.weekEnd, 20);
+    target = childFolder_(filingParent_(dest, location, ws, we), weekFolderName_(ws, we));
+  } else {
+    var base = officeBase_(String(data.docType), location);
+    if (!base) return json({ status: 'error', message: 'No Drive folder is set up for that document type. Check the "Office Folders" tab in the spreadsheet.' });
+    target = (data.docType === 'expense') ? base : officeMonthParent_(base, t.period === 'week' ? d2 : monthDate);
+  }
 
   var now = new Date();
   var ref = makeOfficeRef_(now);
@@ -1720,6 +1734,7 @@ function officeFileName_(docType, periodText, index, total, origName) {
   var base;
   if (docType === 'expense') base = periodText;                       // "September 2026"
   else if (docType === 'hostess') base = 'Hostess Hours Report ' + periodText;
+  else if (docType === 'receipts') base = 'Receipt ' + periodText;    // "Receipt (September 7 - September 13)"
   else base = periodText;                                             // "(September 7 - September 13)"
   if (total > 1) base += ' - ' + (index + 1);
   var ext = extOf_(origName);
@@ -2160,6 +2175,139 @@ function sendKrystalEmail_(ref, who, type, check, now) {
 }
 
 // ===========================================================================
+// SHOP CHECK & INVENTORY — once a month, each shop's manager walks the shop:
+// cleanliness, equipment, and an inventory count of what's running low.
+// Saved to the "Shop Checks" tab, filed into that week's MER folder in Drive
+// (summary PDF + any photos/receipts), and emailed to the office.
+// ===========================================================================
+function handleShopCheck_(data, mgr) {
+  var who = clean_(mgr.name, 80);
+  if (/^spark/i.test(who)) {
+    audit_('SHOP CHECK BLOCKED', { manager: who, verification: 'OK', status: STATUS.REJECTED, detail: 'Spark is documents-only' });
+    return json({ status: 'error', message: 'Shop checks are done in person at the shop — Spark only submits documents.' });
+  }
+  var location = clean_(data.location, 60);
+  if (AREA_SHOPS.indexOf(location) === -1) return json({ status: 'error', message: 'Pick which shop this check is for.' });
+  if (mgr.location && mgr.location.toLowerCase().indexOf(location.toLowerCase()) === -1) {
+    audit_('SHOP CHECK BLOCKED', { manager: who, location: location, verification: 'OK', status: STATUS.REJECTED,
+      detail: 'Assigned to ' + mgr.location });
+    return json({ status: 'error', message: 'You can only submit the shop check for ' + mgr.location + '.' });
+  }
+
+  var problems = [], flags = [];
+  var cleanAns = clean_(data.clean, 30), cleanNotes = clean_(data.cleanNotes, 1200);
+  if (['Yes', 'Needs attention'].indexOf(cleanAns) === -1) problems.push('Say whether the shop is clean and presentable.');
+  if (cleanAns === 'Needs attention') { if (!cleanNotes) problems.push('Describe what needs attention.'); flags.push('needs cleaning attention'); }
+  var workAns = clean_(data.working, 30), workNotes = clean_(data.workingNotes, 1200);
+  if (['Yes', 'Something broken'].indexOf(workAns) === -1) problems.push('Say whether everything is working (chairs, clippers, AC, lights).');
+  if (workAns === 'Something broken') { if (!workNotes) problems.push('Describe what is broken.'); flags.push('something broken'); }
+  var lowItems = clean_(data.lowItems, 2500);
+  if (!lowItems) problems.push('List what is running low (write "nothing low" if fully stocked).');
+  var hasLow = lowItems && !/^nothing\s+low\b/i.test(lowItems);
+  if (hasLow) flags.push('items running low');
+  var notes = clean_(data.notes, 1500);
+  if (problems.length) return json({ status: 'error', message: problems.join(' ') });
+
+  var screen = screenFiles_(data);
+  if (!screen.ok) return json({ status: 'error', message: screen.problems.join(' ') });
+
+  var cache = CacheService.getScriptCache();
+  var subId = sanitizeToken_(data.submissionId) || Utilities.getUuid();
+  var key = 'sc_' + subId;
+  var prior = cache.get(key);
+  if (prior) { prior = JSON.parse(prior); return json({ status: 'success', ref: prior.ref, duplicate: true }); }
+
+  var now = new Date();
+  var ref = 'SC-' + Utilities.formatDate(now, tz_(), 'yyyyMMdd') + '-' + randomTail_();
+  var summary = (flags.length ? 'Attention: ' + flags.join(', ') : 'All good') +
+    (hasLow ? ' · low: ' + lowItems.slice(0, 120) : ' · nothing low');
+  var payload = { location: location, clean: cleanAns, cleanNotes: cleanNotes, working: workAns,
+    workingNotes: workNotes, lowItems: lowItems, notes: notes, photos: screen.files.length };
+
+  try {
+    var sh = ensureShopCheckSheet_();
+    sh.appendRow([
+      cell_(ref), Utilities.formatDate(now, tz_(), 'yyyy-MM-dd HH:mm:ss'), cell_(location),
+      cell_(who), cell_(summary), cell_(JSON.stringify(payload).slice(0, 45000))
+    ]);
+  } catch (e) { logError_(e); }
+
+  // File a summary PDF + any photos into the same weekly folder as the MER.
+  var filedTo = '';
+  try {
+    var mon = new Date(now); mon.setHours(0, 0, 0, 0); mon.setDate(mon.getDate() - ((mon.getDay() + 6) % 7));
+    var sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    var ws = Utilities.formatDate(mon, tz_(), 'yyyy-MM-dd'), we = Utilities.formatDate(sun, tz_(), 'yyyy-MM-dd');
+    var dest = officialFolder_(location);
+    if (dest) {
+      var target = childFolder_(filingParent_(dest, location, ws, we), weekFolderName_(ws, we));
+      var html = shopCheckHtml_(ref, who, location, now, payload);
+      var pdfName = 'Shop Check - ' + ref + '.pdf';
+      if (!fileExists_(target, pdfName)) {
+        target.createFile(Utilities.newBlob(html, 'text/html', 'check.html').getAs('application/pdf').setName(pdfName));
+      }
+      for (var i = 0; i < screen.files.length; i++) {
+        var f = screen.files[i];
+        var nm = uniqueName_(target, 'Shop Check ' + ref + ' - ' + (clean_(f.name, 100) || 'photo ' + (i + 1)));
+        var parts = String(f.dataUrl).split(',');
+        target.createFile(Utilities.newBlob(Utilities.base64Decode(parts[1] || parts[0]), f.type, nm));
+      }
+      filedTo = target.getUrl();
+    }
+  } catch (e) { logError_(e); }
+
+  audit_('SHOP CHECK SUBMITTED', { ref: ref, manager: who, location: location, fileCount: screen.files.length,
+    verification: 'OK', status: 'FILED', detail: summary + (filedTo ? ' · ' + filedTo : '') });
+  sendShopCheckEmail_(ref, who, location, payload, summary, flags.length > 0, now, filedTo);
+  cache.put(key, JSON.stringify({ ref: ref }), 21600);
+  return json({ status: 'success', ref: ref });
+}
+
+function ensureShopCheckSheet_() {
+  var ss = getSpreadsheet_();
+  var sh = ss.getSheetByName('Shop Checks');
+  if (sh) return sh;
+  sh = ss.insertSheet('Shop Checks');
+  sh.appendRow(AREA_HEADERS);
+  sh.getRange(1, 1, 1, AREA_HEADERS.length).setFontWeight('bold');
+  sh.setFrozenRows(1);
+  return sh;
+}
+
+function shopCheckHtml_(ref, who, location, now, p) {
+  var stamp = Utilities.formatDate(now, tz_(), "EEEE, MMMM d, yyyy 'at' h:mm a");
+  function row(label, value) {
+    return value ? '<tr><td style="padding:6px 12px;color:#777;white-space:nowrap">' + esc_(label) +
+      '</td><td style="padding:6px 12px;font-weight:600">' + esc_(value) + '</td></tr>' : '';
+  }
+  return '<div style="font-family:Helvetica,Arial,sans-serif;max-width:640px">' +
+    '<div style="font-family:Georgia,serif;font-size:22px;font-weight:800;letter-spacing:1px">BARBER &amp; CO</div>' +
+    '<div style="color:#b8912a;font-style:italic;margin-bottom:12px">Shop Check &amp; Inventory · ' + esc_(location) + '</div>' +
+    '<p>Submitted by <b>' + esc_(who) + '</b> on ' + stamp + ' · Reference ' + esc_(ref) + '</p>' +
+    '<table style="border-collapse:collapse;width:100%;border:1px solid #eee">' +
+    row('Clean & presentable', p.clean) + row('Cleaning notes', p.cleanNotes) +
+    row('Everything working', p.working) + row('Repair notes', p.workingNotes) +
+    row('Running low', p.lowItems) + row('Other notes', p.notes) +
+    row('Photos / receipts attached', p.photos ? String(p.photos) : '') +
+    '</table></div>';
+}
+
+function sendShopCheckEmail_(ref, who, location, p, summary, alert, now, filedTo) {
+  try {
+    var subject = 'Shop Check – ' + location + ' – ' + Utilities.formatDate(now, tz_(), 'MMM d') +
+      (alert ? ' – ⚠ ATTENTION' : ' – all good');
+    var html = shopCheckHtml_(ref, who, location, now, p) +
+      (filedTo ? '<p style="color:#888;font-size:12px">Filed to the weekly folder: ' + esc_(filedTo) + '</p>' : '');
+    MailApp.sendEmail({
+      to: cfg('AREA_EMAIL') || cfg('OFFICE_EMAIL'),
+      subject: subject,
+      body: 'Shop check for ' + location + ' by ' + who + ' — ' + summary + ' (ref ' + ref + ')',
+      htmlBody: html
+    });
+  } catch (e) { logError_(e); }
+}
+
+// ===========================================================================
 // ADMIN DASHBOARD — read-only overview for Nicole: which reports came in,
 // what awaits approval, and which check-ins happened this week.
 // ===========================================================================
@@ -2215,6 +2363,22 @@ function handleDashboard_(data, mgr, isAdmin) {
     var dario = typesThisWeek('Area Manager Check-ins');
     var krystal = typesThisWeek('Krystal Check-ins');
 
+    // --- Shop checks: one per shop per month -------------------------------
+    var monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    var shopChecks = {};
+    AREA_SHOPS.forEach(function (x) { shopChecks[x] = null; });
+    var ssh = ss.getSheetByName('Shop Checks');
+    if (ssh && ssh.getLastRow() > 1) {
+      var srows = ssh.getRange(2, 1, ssh.getLastRow() - 1, 5).getValues();
+      srows.forEach(function (r) {
+        var when = cellDate_(r[1]);
+        var loc = String(r[2] || '');
+        if (when && when >= monthStart && shopChecks.hasOwnProperty(loc)) {
+          shopChecks[loc] = { ref: String(r[0] || ''), by: String(r[3] || ''), summary: String(r[4] || '') };
+        }
+      });
+    }
+
     // --- Office documents this week -----------------------------------------
     var office = [];
     var osh = ss.getSheetByName('Office Documents');
@@ -2236,6 +2400,7 @@ function handleDashboard_(data, mgr, isAdmin) {
           payroll: krystal['Payroll (Sun-Mon)'] || null,
           tuesday: krystal['Tuesday Duties'] || null
         },
+        shopChecks: shopChecks,
         office: office.slice(-10)
       }
     });
@@ -2267,7 +2432,10 @@ var DETAIL_LABELS = {
   salesToDate: 'Sales to date', salesGoal: 'Sales goal', contact: 'Contact',
   marketing: 'Marketing', services: 'Services', expenses: 'Expenses', items: 'Items',
   attendance: 'Attendance', late: 'Late', absent: 'Absent', entries: 'Entries',
-  uploads: 'Files attached', signature: 'Signed by', total: 'Total', amount: 'Amount'
+  uploads: 'Files attached', signature: 'Signed by', total: 'Total', amount: 'Amount',
+  location: 'Shop', clean: 'Clean & presentable', cleanNotes: 'Cleaning notes',
+  working: 'Everything working', workingNotes: 'Repair notes', lowItems: 'Running low',
+  photos: 'Photos / receipts attached'
 };
 
 function prettyKey_(k) {
@@ -2325,6 +2493,7 @@ function handleReportDetail_(data, mgr, isAdmin) {
     var d = null;
     if (/^AM-/i.test(ref)) d = checkinDetail_(ss.getSheetByName('Area Manager Check-ins'), ref, "Dario's Check-in");
     else if (/^KC-/i.test(ref)) d = checkinDetail_(ss.getSheetByName('Krystal Check-ins'), ref, "Krystal's Check-in");
+    else if (/^SC-/i.test(ref)) d = checkinDetail_(ss.getSheetByName('Shop Checks'), ref, 'Shop Check');
     else if (/^OD-/i.test(ref)) d = officeDetail_(ss.getSheetByName('Office Documents'), ref);
     else d = merDetail_(ss.getSheetByName('Responses'), ref);
     if (!d) return json({ status: 'error', message: 'Could not find report ' + ref + '.' });
