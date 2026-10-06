@@ -272,7 +272,7 @@
         <textarea id="scCleanNotes" rows="2" placeholder="Describe it…"></textarea>
       </div>
       <div class="field">
-        <label for="scWorking">Everything working — chairs, clippers, AC, lights? *</label>
+        <label for="scWorking">Everything working — stations, steamer, lather machine, AC, lights? *</label>
         <select id="scWorking">
           <option value="">Select…</option>
           <option>Yes</option>
@@ -285,7 +285,8 @@
       </div>
       <div class="field">
         <label for="scLowItems">Inventory — what's running low? *</label>
-        <textarea id="scLowItems" rows="3" placeholder='List what needs ordering — or write "nothing low" if fully stocked'></textarea>
+        <div id="scSupplyChips" style="display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px"></div>
+        <textarea id="scLowItems" rows="3" placeholder='Tap items above or type your own — or write "nothing low" if fully stocked'></textarea>
       </div>
       <div class="field">
         <label for="scNotes">Anything else? (optional)</label>

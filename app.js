@@ -1070,6 +1070,7 @@
     showChooser();
   }
 
+
   function showChooser() {
     form.style.display = "none";
     $("#officeCard").style.display = "none";
@@ -1113,6 +1114,35 @@
   // =========================================================================
   var scUploads = [];
   var scShop = "";
+  // The shop's real supply list (from Nicole / Spark) — tap to add to "running low".
+  var SC_SUPPLIES = [
+    "Black Towels", "White Towels", "Barbicide", "Towel Oil", "Black Mask", "Wax", "Wax Sticks", "Shaving Cream",
+    "Dish Soap", "Paper Towels", "Mouth Wash", "Sponges", "Vinegar", "Purified Water", "Windex",
+    "All Purpose Cleaner", "Garbage Bag (Black)", "Garbage Bag (White)", "Incense", "Handsoap",
+    "Floor Cleaner", "Detergent", "Toilet Paper",
+    "Coffee Cups", "Sugar", "Straws", "Cocktail Napkins", "Coffee", "Plastic Cups", "Candy",
+    "Coca-Cola", "Coca Zero", "Sprite", "Ginger", "Sparkling Water"
+  ];
+
+  function scRenderChips() {
+    var wrap = $("#scSupplyChips");
+    if (!wrap || wrap.childNodes.length) return;
+    SC_SUPPLIES.forEach(function (name) {
+      var c = document.createElement("button");
+      c.type = "button"; c.textContent = name;
+      c.style.cssText = "font-size:12px;font-weight:700;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:6px 10px;cursor:pointer";
+      c.addEventListener("click", function () {
+        var ta = $("#scLowItems");
+        var items = ta.value.split(",").map(function (x) { return x.trim(); }).filter(Boolean)
+          .filter(function (x) { return !/^nothing\s+low$/i.test(x); });
+        var idx = items.indexOf(name);
+        if (idx === -1) { items.push(name); c.style.color = "var(--mustard)"; c.style.borderColor = "var(--mustard)"; }
+        else { items.splice(idx, 1); c.style.color = "var(--muted)"; c.style.borderColor = "var(--line)"; }
+        ta.value = items.join(", ");
+      });
+      wrap.appendChild(c);
+    });
+  }
 
   function scFail(msg) {
     var err = $("#scError");
@@ -1151,6 +1181,7 @@
     if (!showShop.__init) {
       showShop.__init = true;
       scRenderFiles();
+      scRenderChips();
       $("#scClean").addEventListener("change", function () {
         $("#scCleanNotesWrap").style.display = this.value === "Needs attention" ? "" : "none";
       });
@@ -1733,6 +1764,7 @@
       })
       .catch(function () { btn.disabled = false; btn.textContent = "Submit Check-in"; kFail("Couldn't reach the server. Check your connection and try again."); });
   }
+
 
   // =========================================================================
   // ADMIN DASHBOARD (Nicole) — read-only: what's done, what's missing
