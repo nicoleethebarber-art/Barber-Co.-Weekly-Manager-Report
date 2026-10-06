@@ -1068,7 +1068,16 @@
   /** After a verified session: admins choose report vs office docs; managers go straight to the report. */
   function afterAuth() {
     if (session && session.isAdmin) { showChooser(); return; }
+    // The Edgewater manager (typically Juan) gets the simple entry point instead of the 8-step wizard.
+    if (isEdgewaterMgr_()) { showChooser(); return; }
     showReportForm();
+  }
+
+  /** True when the signed-in manager is assigned to Edgewater (Juan by name as fallback). */
+  function isEdgewaterMgr_() {
+    var nm = String((session && session.name) || "");
+    var loc = String((session && session.location) || "");
+    return /edgewater/i.test(loc) || /^juan\b/i.test(nm);
   }
 
   function showChooser() {
@@ -1077,11 +1086,16 @@
     $("#areaCard").style.display = "none";
     $("#dashCard").style.display = "none";
     $("#kCard").style.display = "none";
+    $("#juanCard").style.display = "none";
     $("#chooserCard").style.display = "";
     var nm = String((session && session.name) || "").trim();
     var isDario = /^dario\b/i.test(nm), isKrystal = /^krystal\b/i.test(nm), isNicole = /^nicole\b/i.test(nm);
+    var isEdgewaterMgr = isEdgewaterMgr_();
+    var admin = !!(session && session.isAdmin);
     $("#chooseArea").style.display = (isDario || isNicole) ? "" : "none";
     $("#chooseK").style.display = (isKrystal || isNicole) ? "" : "none";
+    $("#chooseJuan").style.display = (isEdgewaterMgr || isNicole) ? "" : "none";
+    $("#chooseOffice").style.display = admin ? "" : "none";
     $("#chooseDash").style.display = isNicole ? "" : "none";
     if (!showChooser.__init) {
       showChooser.__init = true;
@@ -1089,6 +1103,7 @@
       $("#chooseOffice").addEventListener("click", showOffice);
       $("#chooseArea").addEventListener("click", showArea);
       $("#chooseK").addEventListener("click", showK);
+      $("#chooseJuan").addEventListener("click", showJuan);
       $("#chooseDash").addEventListener("click", showDash);
     }
   }
@@ -1100,6 +1115,7 @@
     $("#areaCard").style.display = "none";
     $("#dashCard").style.display = "none";
     $("#kCard").style.display = "none";
+    $("#juanCard").style.display = "none";
     form.style.display = "";
     if (!formStarted) { formStarted = true; startForm(); }
   }
@@ -1123,6 +1139,7 @@
     $("#officeCard").style.display = "none";
     $("#dashCard").style.display = "none";
     $("#kCard").style.display = "none";
+    $("#juanCard").style.display = "none";
     $("#areaCard").style.display = "";
     initArea();
   }
@@ -1363,6 +1380,7 @@
     $("#officeCard").style.display = "none";
     $("#areaCard").style.display = "none";
     $("#dashCard").style.display = "none";
+    $("#juanCard").style.display = "none";
     $("#kCard").style.display = "";
     initK();
   }
@@ -1608,6 +1626,203 @@
   }
 
   // =========================================================================
+  // JUAN'S CHECK (Miami/Edgewater) — inventory + physical shop work.
+  // Dead simple: 2 short steps, big buttons, minimal typing. Submits with
+  // action "juancheck" through the same endpoint/auth/upload plumbing.
+  // =========================================================================
+  var JUAN_SUPPLIES = [
+    "Black Towels", "White Towels", "Barbicide", "Towel Oil", "Black Mask", "Wax", "Wax Sticks", "Shaving Cream",
+    "Dish Soap", "Paper Towels", "Mouth Wash", "Sponges", "Vinegar", "Purified Water", "Windex",
+    "All Purpose Cleaner", "Garbage Bag (Black)", "Garbage Bag (White)", "Incense", "Handsoap",
+    "Floor Cleaner", "Detergent", "Toilet Paper",
+    "Coffee Cups", "Sugar", "Straws", "Cocktail Napkins", "Coffee", "Plastic Cups", "Candy",
+    "Coca-Cola", "Coca Zero", "Sprite", "Ginger", "Sparkling Water"
+  ];
+  var JUAN_CHECKS = [
+    { key: "stations", label: "Stations" },
+    { key: "steamer", label: "Steamer" },
+    { key: "lather", label: "Lather machine" },
+    { key: "deepclean", label: "Deep clean" },
+    { key: "condition", label: "General shop condition" },
+    { key: "maintenance", label: "Maintenance / equipment issues" }
+  ];
+  var juanMode = "";
+
+  function showJuan() {
+    $("#chooserCard").style.display = "none";
+    form.style.display = "none";
+    $("#officeCard").style.display = "none";
+    $("#areaCard").style.display = "none";
+    $("#dashCard").style.display = "none";
+    $("#kCard").style.display = "none";
+    $("#juanCard").style.display = "";
+    initJuan();
+  }
+
+  function juanFail(msg) {
+    var e = $("#juanError");
+    e.textContent = msg; e.style.display = "block";
+    e.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  function juanInvRow(name) {
+    return '<div class="row-item juan-inv-row">' +
+      '<button type="button" class="row-remove" data-jrm aria-label="Remove item">\u00d7</button>' +
+      '<div class="row-grid">' +
+      '<div><span class="mini-label">Product</span><input type="text" data-jname value="' + escapeHtml(name || "") + '" placeholder="Product name"></div>' +
+      '<div class="two-col">' +
+      '<div><span class="mini-label">On hand</span><input type="number" inputmode="numeric" min="0" data-jqty placeholder="0"></div>' +
+      '<div><span class="mini-label">Need to order?</span><label style="display:flex;align-items:center;gap:10px;background:var(--field);border:1.5px solid var(--line);border-radius:10px;padding:12px;min-height:50px;cursor:pointer;font-weight:700;font-size:14px"><input type="checkbox" data-jlow style="width:22px;height:22px"> Low — order</label></div>' +
+      "</div></div></div>";
+  }
+
+  function buildJuanForms() {
+    var inv = '<div class="group"><h3>What\u2019s on the shelf?</h3>' +
+      '<p class="group-note">Enter how many you have. Tick \u201cLow — order\u201d for anything running out.</p>' +
+      '<div class="rows" id="juanInvRows">';
+    JUAN_SUPPLIES.forEach(function (s) { inv += juanInvRow(s); });
+    inv += '</div><button type="button" class="add-btn" id="juanAddRow">\uff0b Add item</button></div>';
+    $("#juanInvForm").innerHTML = inv;
+
+    var shop = '<div class="group"><h3>Walk the shop</h3>' +
+      '<p class="group-note">Tap <b>Pass</b> or <b>Issue</b> for each. Add a photo and a quick note for anything wrong.</p>';
+    JUAN_CHECKS.forEach(function (c) {
+      shop += '<div style="border-top:1px solid var(--line);padding-top:12px;margin-top:12px">' +
+        "<b>" + escapeHtml(c.label) + "</b>" +
+        segHtml("jchk_" + c.key, [["Pass", "ok"], ["Issue", "no"]]) +
+        '<div class="uploader" data-upload="juan_' + c.key + '" style="margin-top:10px">' +
+        '<label class="upload-btn"><input type="file" class="upload-input" accept="image/*,application/pdf" multiple>\ud83d\udcf7 Add photo</label>' +
+        '<div class="thumbs"></div></div>' +
+        '<div class="field" data-jnoteswrap="' + c.key + '" style="display:none;margin-top:10px"><label>What\u2019s wrong? *</label>' +
+        '<textarea data-jnotes="' + c.key + '" placeholder="Quick note"></textarea></div></div>';
+    });
+    shop += "</div>";
+    $("#juanShopForm").innerHTML = shop;
+  }
+
+  function juanSetMode(mode) {
+    juanMode = mode;
+    $("#juanTabInv").classList.toggle("on", mode === "inv");
+    $("#juanTabShop").classList.toggle("on", mode === "shop");
+    $("#juanInvForm").style.display = mode === "inv" ? "" : "none";
+    $("#juanShopForm").style.display = mode === "shop" ? "" : "none";
+    $("#juanSubmit").style.display = mode ? "" : "none";
+    $("#juanError").style.display = "none";
+  }
+
+  function juanCollect() {
+    var d = { mode: juanMode, inventory: [], checks: [] };
+    $$("#juanInvRows .juan-inv-row").forEach(function (r) {
+      d.inventory.push({
+        name: r.querySelector("[data-jname]").value.trim(),
+        qty: r.querySelector("[data-jqty]").value.trim(),
+        low: !!r.querySelector("[data-jlow]").checked
+      });
+    });
+    var shop = $("#juanShopForm");
+    JUAN_CHECKS.forEach(function (c) {
+      var notesEl = shop.querySelector('[data-jnotes="' + c.key + '"]');
+      d.checks.push({
+        key: c.key, label: c.label,
+        status: segValue(shop, "jchk_" + c.key),
+        notes: notesEl ? notesEl.value.trim() : ""
+      });
+    });
+    return d;
+  }
+
+  function juanValidate(d) {
+    var p = [];
+    if (!d.inventory.length) p.push("Add at least one inventory item.");
+    d.inventory.forEach(function (r, i) {
+      if (!r.name) p.push("Inventory row " + (i + 1) + ": enter the product name.");
+      if (r.qty === "" || isNaN(parseFloat(r.qty)) || parseFloat(r.qty) < 0) p.push((r.name || "Row " + (i + 1)) + ": enter how many are on hand.");
+    });
+    d.checks.forEach(function (c) {
+      if (!c.status) p.push(c.label + ": tap Pass or Issue.");
+      else if (c.status === "Issue" && !c.notes) p.push(c.label + ": add a quick note about the issue.");
+    });
+    return p;
+  }
+
+  function juanClearBuckets() {
+    Object.keys(uploads).forEach(function (b) { if (b.indexOf("juan_") === 0) delete uploads[b]; });
+  }
+
+  function juanSubmitForm() {
+    var btn = $("#juanSubmit"), ok = $("#juanSuccess");
+    $("#juanError").style.display = "none"; ok.style.display = "none";
+    if (!juanMode) { juanFail("Pick step 1 or 2 first."); return; }
+    var d = juanCollect();
+    var problems = juanValidate(d);
+    if (problems.length) { juanFail(problems.join(" ")); return; }
+    var juploads = {};
+    Object.keys(uploads).forEach(function (b) {
+      if (b.indexOf("juan_") === 0 && (uploads[b] || []).length) juploads[b] = uploads[b];
+    });
+    var payload = {
+      action: "juancheck",
+      token: session && session.token,
+      submissionId: uuid(),
+      location: "Miami / Edgewater",
+      inventory: d.inventory,
+      checks: d.checks,
+      uploads: juploads
+    };
+    btn.disabled = true; btn.textContent = "Submitting\u2026";
+    fetch(ENDPOINT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) })
+      .then(function (r) { return r.json(); })
+      .then(function (res) {
+        btn.disabled = false; btn.textContent = "Submit Check";
+        if (res && res.status === "success") {
+          juanClearBuckets();
+          ok.innerHTML = "\u2705 <strong>Check submitted!</strong> Nicole has been emailed.<br>Reference: " + escapeHtml(res.ref || "");
+          ok.style.display = ""; ok.scrollIntoView({ behavior: "smooth", block: "center" });
+        } else if (res && /access code|session has expired/i.test(res.message || "")) {
+          clearSession(); session = null; $("#juanCard").style.display = "none"; showGate();
+        } else {
+          juanFail((res && res.message) || "The server could not save the check. Please try again.");
+        }
+      })
+      .catch(function () { btn.disabled = false; btn.textContent = "Submit Check"; juanFail("Couldn't reach the server. Check your connection and try again."); });
+  }
+
+  function initJuan() {
+    if (initJuan.__init) return;
+    initJuan.__init = true;
+    buildJuanForms();
+    $$(".uploader", $("#juanShopForm")).forEach(initUploader);
+    $("#juanCard").addEventListener("click", function (e) {
+      var rm = e.target.closest("[data-jrm]");
+      if (rm) { var row = rm.closest(".juan-inv-row"); if (row) row.remove(); return; }
+      var lab = e.target.closest(".seg label");
+      if (!lab) return;
+      var seg = lab.parentElement;
+      seg.dataset.val = lab.dataset.val;
+      Array.prototype.slice.call(seg.children).forEach(function (l) { l.classList.remove("sel-ok", "sel-no", "sel-na"); });
+      lab.classList.add("sel-" + lab.dataset.tone);
+      var k = seg.dataset.seg, v = seg.dataset.val;
+      if (k.indexOf("jchk_") === 0) {
+        var key = k.slice(5);
+        var wrap = $("#juanShopForm").querySelector('[data-jnoteswrap="' + key + '"]');
+        if (wrap) wrap.style.display = v === "Issue" ? "" : "none";
+      }
+    });
+    $("#juanAddRow").addEventListener("click", function () {
+      var host = $("#juanInvRows");
+      host.insertAdjacentHTML("beforeend", juanInvRow(""));
+      var rows = host.querySelectorAll(".juan-inv-row");
+      var last = rows[rows.length - 1];
+      last.scrollIntoView({ behavior: "smooth", block: "center" });
+      var inp = last.querySelector("[data-jname]"); if (inp) inp.focus();
+    });
+    $("#juanTabInv").addEventListener("click", function () { juanSetMode("inv"); });
+    $("#juanTabShop").addEventListener("click", function () { juanSetMode("shop"); });
+    $("#juanBack").addEventListener("click", showChooser);
+    $("#juanSubmit").addEventListener("click", juanSubmitForm);
+  }
+
+  // =========================================================================
   // ADMIN DASHBOARD (Nicole) — read-only: what's done, what's missing
   // =========================================================================
   function showDash() {
@@ -1616,6 +1831,7 @@
     $("#officeCard").style.display = "none";
     $("#areaCard").style.display = "none";
     $("#kCard").style.display = "none";
+    $("#juanCard").style.display = "none";
     $("#dashCard").style.display = "";
     if (!showDash.__init) {
       showDash.__init = true;
@@ -1744,6 +1960,7 @@
     $("#areaCard").style.display = "none";
     $("#dashCard").style.display = "none";
     $("#kCard").style.display = "none";
+    $("#juanCard").style.display = "none";
     $("#officeCard").style.display = "";
     initOffice();
   }
