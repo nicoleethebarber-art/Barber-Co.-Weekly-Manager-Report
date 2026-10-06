@@ -241,6 +241,7 @@
       <button type="button" class="submit" id="chooseOffice" style="width:100%;background:var(--gold-dark)">🗂️ Office Documents</button>
       <button type="button" class="submit" id="chooseArea" style="width:100%;display:none">🧭 Dario's Check-in</button>
       <button type="button" class="submit" id="chooseK" style="width:100%;display:none;background:var(--gold-dark)">🗓️ Krystal's Check-in</button>
+      <button type="button" class="submit" id="chooseJuan" style="width:100%;display:none;background:#2e2c28;color:var(--gold)">📦 Juan — Inventory &amp; Shop Check</button>
       <button type="button" class="submit" id="chooseDash" style="width:100%;display:none;background:#2e2c28;color:var(--gold)">📊 Admin Dashboard</button>
       <p style="text-align:center;color:var(--muted);font-size:12px;margin:4px 0 0">
         Office documents: commission payouts, hostess hours, bank &amp; checks, monthly expense reports.
@@ -350,6 +351,25 @@
       <div id="kSuccess" style="display:none;background:rgba(52,176,106,.12);border:1px solid rgba(52,176,106,.4);border-radius:10px;padding:14px 16px;margin:10px 0;font-size:14px"></div>
       <button type="button" class="submit" id="kSubmit" style="width:100%;display:none">Submit Check-in</button>
       <button type="button" id="kBack" style="width:100%;background:none;border:none;color:var(--muted);margin-top:12px;cursor:pointer;font-size:13.5px">← Back</button>
+    </div>
+  </div>
+
+  <!-- Juan's check: inventory + physical shop work (Miami/Edgewater) -->
+  <div class="card" id="juanCard" style="display:none">
+    <div class="brand"><div class="name">BARBER &amp; CO</div><div class="miami">Juan</div></div>
+    <div class="title-bar">Inventory &amp; Shop Check</div>
+    <div style="padding:18px 16px 30px;max-width:520px;margin:0 auto">
+      <p class="hint" style="margin:4px 0 12px">Quick in-shop check for Miami / Edgewater. Two short steps — big buttons, no essays.</p>
+      <div class="status-opts" style="grid-template-columns:1fr 1fr;margin:0 0 6px">
+        <label class="area-tab" id="juanTabInv">📦 1 · Inventory</label>
+        <label class="area-tab" id="juanTabShop">🧹 2 · Shop Check</label>
+      </div>
+      <div id="juanInvForm" style="display:none"></div>
+      <div id="juanShopForm" style="display:none"></div>
+      <div class="error-note" id="juanError"></div>
+      <div id="juanSuccess" style="display:none;background:rgba(52,176,106,.12);border:1px solid rgba(52,176,106,.4);border-radius:10px;padding:14px 16px;margin:10px 0;font-size:14px"></div>
+      <button type="button" class="submit" id="juanSubmit" style="width:100%;display:none">Submit Check</button>
+      <button type="button" id="juanBack" style="width:100%;background:none;border:none;color:var(--muted);margin-top:12px;cursor:pointer;font-size:13.5px">← Back</button>
     </div>
   </div>
 
