@@ -1759,6 +1759,15 @@
         '<textarea data-lnotes="' + c.key + '" placeholder="Quick note"></textarea></div></div>';
     });
     shop += "</div>";
+    // Manager Notes (optional) — folded in from the old 8-step report.
+    // Attendance, incidents, team meeting notes, barber feedback.
+    shop += '<div class="group" style="margin-top:18px"><h3>Manager Notes <span style="font-weight:400;font-size:12.5px;color:var(--muted)">(optional)</span></h3>' +
+      '<p class="group-note">Anything Nicole should know — attendance, incidents, team notes, barber feedback.</p>' +
+      '<div class="field"><label>Attendance</label><textarea data-mnotes="attendance" placeholder="Late arrivals, absences, call-outs…"></textarea></div>' +
+      '<div class="field"><label>Incidents</label><textarea data-mnotes="incidents" placeholder="Customer or staff incidents…"></textarea></div>' +
+      '<div class="field"><label>Team meeting notes</label><textarea data-mnotes="meeting" placeholder="What was discussed…"></textarea></div>' +
+      '<div class="field"><label>Barber feedback</label><textarea data-mnotes="barbers" placeholder="Ratings, shout-outs, concerns…"></textarea></div>' +
+      "</div>";
     $("#locShopForm").innerHTML = shop;
   }
 
@@ -1789,6 +1798,12 @@
         status: segValue(shop, "lchk_" + c.key),
         notes: notesEl ? notesEl.value.trim() : ""
       });
+    });
+    // Manager notes (optional) — folded in from the old 8-step report.
+    d.managerNotes = {};
+    ["attendance", "incidents", "meeting", "barbers"].forEach(function (k) {
+      var el = shop.querySelector('[data-mnotes="' + k + '"]');
+      d.managerNotes[k] = el ? el.value.trim() : "";
     });
     return d;
   }
@@ -1838,7 +1853,8 @@
       inventory: invPayload,
       checks: d.checks,
       uploads: locUploads,
-      shopCheckOnly: locShopOnly
+      shopCheckOnly: locShopOnly,
+      managerNotes: d.managerNotes
     };
     btn.disabled = true; btn.textContent = "Submitting\u2026";
     fetch(ENDPOINT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) })
