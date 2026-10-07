@@ -1691,6 +1691,17 @@
   ];
   var locMode = "";
   var locLocation = "";
+  var locShopOnly = false;
+
+  function locPickMode(shopOnly) {
+    locShopOnly = shopOnly;
+    $("#locModeFull").classList.toggle("on", !shopOnly);
+    $("#locModeShop").classList.toggle("on", shopOnly);
+    $("#locModeNote").style.display = shopOnly ? "" : "none";
+    $("#locTabs").style.display = shopOnly ? "none" : "";
+    // Shop-check-only goes straight to the shop step; full check-in starts at inventory.
+    locSetMode(shopOnly ? "shop" : "inv");
+  }
 
   function showLoc(location) {
     locLocation = location;
@@ -1706,6 +1717,8 @@
     $("#locHint").textContent = "Quick in-shop check for " + location + ". Two short steps \u2014 big buttons, no essays.";
     $("#locCard").style.display = "";
     initLoc();
+    // Default to full check-in; manager can switch to shop-check-only (inventory is monthly).
+    locPickMode(false);
   }
 
   function locFail(msg) {
@@ -1782,11 +1795,14 @@
 
   function locValidate(d) {
     var p = [];
-    if (!d.inventory.length) p.push("Add at least one inventory item.");
-    d.inventory.forEach(function (r, i) {
-      if (!r.name) p.push("Inventory row " + (i + 1) + ": enter the product name.");
-      if (r.qty === "" || isNaN(parseFloat(r.qty)) || parseFloat(r.qty) < 0) p.push((r.name || "Row " + (i + 1)) + ": enter how many are on hand.");
-    });
+    // Shop-check-only mode skips inventory entirely (inventory is once a month).
+    if (!locShopOnly) {
+      if (!d.inventory.length) p.push("Add at least one inventory item.");
+      d.inventory.forEach(function (r, i) {
+        if (!r.name) p.push("Inventory row " + (i + 1) + ": enter the product name.");
+        if (r.qty === "" || isNaN(parseFloat(r.qty)) || parseFloat(r.qty) < 0) p.push((r.name || "Row " + (i + 1)) + ": enter how many are on hand.");
+      });
+    }
     d.checks.forEach(function (c) {
       if (!c.status) p.push(c.label + ": tap Pass or Issue.");
       else if (c.status === "Issue" && !c.notes) p.push(c.label + ": add a quick note about the issue.");
@@ -1809,14 +1825,20 @@
     Object.keys(uploads).forEach(function (b) {
       if (b.indexOf("loc_") === 0 && (uploads[b] || []).length) locUploads[b] = uploads[b];
     });
+    // Shop-check-only: send a clearly-labeled placeholder row so the backend
+    // (which requires at least one inventory row) accepts it. Inventory is monthly.
+    var invPayload = locShopOnly
+      ? [{ name: "Shop check only — no inventory counted (monthly)", qty: 0, low: false }]
+      : d.inventory;
     var payload = {
       action: "locationcheck",
       token: session.token,
       submissionId: uuid(),
       location: locLocation,
-      inventory: d.inventory,
+      inventory: invPayload,
       checks: d.checks,
-      uploads: locUploads
+      uploads: locUploads,
+      shopCheckOnly: locShopOnly
     };
     btn.disabled = true; btn.textContent = "Submitting\u2026";
     fetch(ENDPOINT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) })
@@ -1867,6 +1889,8 @@
     });
     $("#locTabInv").addEventListener("click", function () { locSetMode("inv"); });
     $("#locTabShop").addEventListener("click", function () { locSetMode("shop"); });
+    $("#locModeFull").addEventListener("click", function () { locPickMode(false); });
+    $("#locModeShop").addEventListener("click", function () { locPickMode(true); });
     $("#locBack").addEventListener("click", showChooser);
     $("#locSubmit").addEventListener("click", locSubmitForm);
   }
