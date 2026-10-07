@@ -368,7 +368,12 @@
     <div class="title-bar" id="locTitle">Inventory &amp; Shop Check</div>
     <div style="padding:18px 16px 30px;max-width:520px;margin:0 auto">
       <p class="hint" id="locHint" style="margin:4px 0 12px">Quick in-shop check. Two short steps — big buttons, no essays.</p>
-      <div class="status-opts" style="grid-template-columns:1fr 1fr;margin:0 0 6px">
+      <div class="status-opts" style="grid-template-columns:1fr 1fr;margin:0 0 6px" id="locModePick">
+        <label class="area-tab" id="locModeFull">📦 Full check-in</label>
+        <label class="area-tab" id="locModeShop">🧹 Shop check only</label>
+      </div>
+      <p class="hint" id="locModeNote" style="margin:0 0 10px;font-size:12.5px;display:none">Inventory is once a month — shop check only skips the count.</p>
+      <div class="status-opts" id="locTabs" style="grid-template-columns:1fr 1fr;margin:0 0 6px;display:none">
         <label class="area-tab" id="locTabInv">📦 1 · Inventory</label>
         <label class="area-tab" id="locTabShop">🧹 2 · Shop Check</label>
       </div>
@@ -757,6 +762,6 @@
 
 <!-- Version query busts browser caches whenever the app changes.
      Bump this value on every deploy so managers always get the latest form. -->
-<script src="app.js?v=24"></script>
+<script src="app.js?v=25"></script>
 </body>
 </html>
