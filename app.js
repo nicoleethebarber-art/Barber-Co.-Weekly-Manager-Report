@@ -1072,7 +1072,8 @@
     // Managers assigned to a known shop location get the location check-in chooser.
     var loc = String((session && session.location) || "").trim().toLowerCase();
     if (loc === "miami / edgewater" || loc === "pinecrest" || loc === "studio") { showChooser(); return; }
-    showReportForm();
+    // 8-step Weekly Manager Report retired Oct 7, 2026 — fall back to chooser.
+    showChooser();
   }
 
   /** Shop locations with a check-in flow. Values must match the backend's allowed list. */
@@ -1111,7 +1112,7 @@
     $("#chooseDash").style.display = isNicole ? "" : "none";
     if (!showChooser.__init) {
       showChooser.__init = true;
-      $("#chooseReport").addEventListener("click", showReportForm);
+      // chooseReport removed — 8-step report retired Oct 7, 2026.
       $("#chooseOffice").addEventListener("click", showOffice);
       $("#chooseEdgewater").addEventListener("click", function () { showLoc("Miami / Edgewater"); });
       $("#choosePinecrest").addEventListener("click", function () { showLoc("Pinecrest"); });
@@ -1145,6 +1146,8 @@
   }
 
   var formStarted = false;
+  // DEPRECATED Oct 7, 2026: 8-step Weekly Manager Report retired.
+  // Location check-ins + Spark Auto cover everything. Kept for reference only — unreachable.
   function showReportForm() {
     $("#chooserCard").style.display = "none";
     $("#officeCard").style.display = "none";
@@ -2088,6 +2091,7 @@
     initOffice.__init = true;
     odRenderFiles();
     $("#odType").addEventListener("change", odToggle);
+    odToggle();
     $("#odWeekStart").addEventListener("change", function () {
       var v = this.value;
       if (v && !$("#odWeekEnd").value) {
