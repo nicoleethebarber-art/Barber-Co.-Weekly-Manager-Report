@@ -1108,12 +1108,11 @@
     $("#choosePinecrest").style.display = vis.indexOf("Pinecrest") > -1 ? "" : "none";
     $("#chooseStudio").style.display = vis.indexOf("Studio") > -1 ? "" : "none";
     $("#chooseSpark").style.display = (admin || isNicole) ? "" : "none";
-    $("#chooseOffice").style.display = admin ? "" : "none";
     $("#chooseDash").style.display = isNicole ? "" : "none";
     if (!showChooser.__init) {
       showChooser.__init = true;
       // chooseReport removed — 8-step report retired Oct 7, 2026.
-      $("#chooseOffice").addEventListener("click", showOffice);
+      // chooseOffice removed — Monthly Expense Report button retired Oct 8, 2026 (Spark does it at month-end).
       $("#chooseEdgewater").addEventListener("click", function () { showLoc("Miami / Edgewater"); });
       $("#choosePinecrest").addEventListener("click", function () { showLoc("Pinecrest"); });
       $("#chooseStudio").addEventListener("click", function () { showLoc("Studio"); });
