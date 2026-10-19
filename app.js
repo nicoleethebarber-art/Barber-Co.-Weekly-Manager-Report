@@ -1072,7 +1072,8 @@
     // Managers assigned to a known shop location get the location check-in chooser.
     var loc = String((session && session.location) || "").trim().toLowerCase();
     if (loc === "miami / edgewater" || loc === "pinecrest" || loc === "studio") { showChooser(); return; }
-    showReportForm();
+    // 8-step Weekly Manager Report retired Oct 7, 2026 — fall back to chooser.
+    showChooser();
   }
 
   /** Shop locations with a check-in flow. Values must match the backend's allowed list. */
@@ -1107,12 +1108,11 @@
     $("#choosePinecrest").style.display = vis.indexOf("Pinecrest") > -1 ? "" : "none";
     $("#chooseStudio").style.display = vis.indexOf("Studio") > -1 ? "" : "none";
     $("#chooseSpark").style.display = (admin || isNicole) ? "" : "none";
-    $("#chooseOffice").style.display = admin ? "" : "none";
     $("#chooseDash").style.display = isNicole ? "" : "none";
     if (!showChooser.__init) {
       showChooser.__init = true;
-      $("#chooseReport").addEventListener("click", showReportForm);
-      $("#chooseOffice").addEventListener("click", showOffice);
+      // chooseReport removed — 8-step report retired Oct 7, 2026.
+      // chooseOffice removed — Monthly Expense Report button retired Oct 8, 2026 (Spark does it at month-end).
       $("#chooseEdgewater").addEventListener("click", function () { showLoc("Miami / Edgewater"); });
       $("#choosePinecrest").addEventListener("click", function () { showLoc("Pinecrest"); });
       $("#chooseStudio").addEventListener("click", function () { showLoc("Studio"); });
@@ -1145,6 +1145,8 @@
   }
 
   var formStarted = false;
+  // DEPRECATED Oct 7, 2026: 8-step Weekly Manager Report retired.
+  // Location check-ins + Spark Auto cover everything. Kept for reference only — unreachable.
   function showReportForm() {
     $("#chooserCard").style.display = "none";
     $("#officeCard").style.display = "none";
@@ -1691,6 +1693,17 @@
   ];
   var locMode = "";
   var locLocation = "";
+  var locShopOnly = false;
+
+  function locPickMode(shopOnly) {
+    locShopOnly = shopOnly;
+    $("#locModeFull").classList.toggle("on", !shopOnly);
+    $("#locModeShop").classList.toggle("on", shopOnly);
+    $("#locModeNote").style.display = shopOnly ? "" : "none";
+    $("#locTabs").style.display = shopOnly ? "none" : "";
+    // Shop-check-only goes straight to the shop step; full check-in starts at inventory.
+    locSetMode(shopOnly ? "shop" : "inv");
+  }
 
   function showLoc(location) {
     locLocation = location;
@@ -1706,6 +1719,8 @@
     $("#locHint").textContent = "Quick in-shop check for " + location + ". Two short steps \u2014 big buttons, no essays.";
     $("#locCard").style.display = "";
     initLoc();
+    // Default to full check-in; manager can switch to shop-check-only (inventory is monthly).
+    locPickMode(false);
   }
 
   function locFail(msg) {
@@ -1721,13 +1736,13 @@
       '<div><span class="mini-label">Product</span><input type="text" data-lname value="' + escapeHtml(name || "") + '" placeholder="Product name"></div>' +
       '<div class="two-col">' +
       '<div><span class="mini-label">On hand</span><input type="number" inputmode="numeric" min="0" data-lqty placeholder="0"></div>' +
-      '<div><span class="mini-label">Need to order?</span><label style="display:flex;align-items:center;gap:10px;background:var(--field);border:1.5px solid var(--line);border-radius:10px;padding:12px;min-height:50px;cursor:pointer;font-weight:700;font-size:14px"><input type="checkbox" data-llow style="width:22px;height:22px"> Low — order</label></div>' +
+      '<div><span class="mini-label">To order</span><input type="number" inputmode="numeric" min="0" data-lorder placeholder="0"></div>' +
       "</div></div></div>";
   }
 
   function buildLocForms() {
     var inv = '<div class="group"><h3>What\u2019s on the shelf?</h3>' +
-      '<p class="group-note">Enter how many you have. Tick \u201cLow — order\u201d for anything running out.</p>' +
+      '<p class="group-note">Enter how many you have on hand, and how many to order (leave 0 if fully stocked).</p>' +
       '<div class="rows" id="locInvRows">';
     LOC_SUPPLIES.forEach(function (s) { inv += locInvRow(s); });
     inv += '</div><button type="button" class="add-btn" id="locAddRow">\uff0b Add item</button></div>';
@@ -1746,6 +1761,15 @@
         '<textarea data-lnotes="' + c.key + '" placeholder="Quick note"></textarea></div></div>';
     });
     shop += "</div>";
+    // Manager Notes (optional) — folded in from the old 8-step report.
+    // Attendance, incidents, team meeting notes, barber feedback.
+    shop += '<div class="group" style="margin-top:18px"><h3>Manager Notes <span style="font-weight:400;font-size:12.5px;color:var(--muted)">(optional)</span></h3>' +
+      '<p class="group-note">Anything Nicole should know — attendance, incidents, team notes, barber feedback.</p>' +
+      '<div class="field"><label>Attendance</label><textarea data-mnotes="attendance" placeholder="Late arrivals, absences, call-outs…"></textarea></div>' +
+      '<div class="field"><label>Incidents</label><textarea data-mnotes="incidents" placeholder="Customer or staff incidents…"></textarea></div>' +
+      '<div class="field"><label>Team meeting notes</label><textarea data-mnotes="meeting" placeholder="What was discussed…"></textarea></div>' +
+      '<div class="field"><label>Barber feedback</label><textarea data-mnotes="barbers" placeholder="Ratings, shout-outs, concerns…"></textarea></div>' +
+      "</div>";
     $("#locShopForm").innerHTML = shop;
   }
 
@@ -1762,10 +1786,14 @@
   function locCollect() {
     var d = { mode: locMode, inventory: [], checks: [] };
     $$("#locInvRows .loc-inv-row").forEach(function (r) {
+      var oRaw = r.querySelector("[data-lorder]").value.trim();
+      var oNum = oRaw === "" ? 0 : parseFloat(oRaw);
       d.inventory.push({
         name: r.querySelector("[data-lname]").value.trim(),
         qty: r.querySelector("[data-lqty]").value.trim(),
-        low: !!r.querySelector("[data-llow]").checked
+        order: oRaw,
+        // "Low" now means a positive order quantity (replaces the old checkbox).
+        low: oRaw !== "" && !isNaN(oNum) && oNum > 0
       });
     });
     var shop = $("#locShopForm");
@@ -1777,16 +1805,26 @@
         notes: notesEl ? notesEl.value.trim() : ""
       });
     });
+    // Manager notes (optional) — folded in from the old 8-step report.
+    d.managerNotes = {};
+    ["attendance", "incidents", "meeting", "barbers"].forEach(function (k) {
+      var el = shop.querySelector('[data-mnotes="' + k + '"]');
+      d.managerNotes[k] = el ? el.value.trim() : "";
+    });
     return d;
   }
 
   function locValidate(d) {
     var p = [];
-    if (!d.inventory.length) p.push("Add at least one inventory item.");
-    d.inventory.forEach(function (r, i) {
-      if (!r.name) p.push("Inventory row " + (i + 1) + ": enter the product name.");
-      if (r.qty === "" || isNaN(parseFloat(r.qty)) || parseFloat(r.qty) < 0) p.push((r.name || "Row " + (i + 1)) + ": enter how many are on hand.");
-    });
+    // Shop-check-only mode skips inventory entirely (inventory is once a month).
+    if (!locShopOnly) {
+      if (!d.inventory.length) p.push("Add at least one inventory item.");
+      d.inventory.forEach(function (r, i) {
+        if (!r.name) p.push("Inventory row " + (i + 1) + ": enter the product name.");
+        if (r.qty === "" || isNaN(parseFloat(r.qty)) || parseFloat(r.qty) < 0) p.push((r.name || "Row " + (i + 1)) + ": enter how many are on hand.");
+        if (r.order !== "" && (isNaN(parseFloat(r.order)) || parseFloat(r.order) < 0)) p.push((r.name || "Row " + (i + 1)) + ": \u201cTo order\u201d must be 0 or more (leave blank if nothing to order).");
+      });
+    }
     d.checks.forEach(function (c) {
       if (!c.status) p.push(c.label + ": tap Pass or Issue.");
       else if (c.status === "Issue" && !c.notes) p.push(c.label + ": add a quick note about the issue.");
@@ -1809,14 +1847,24 @@
     Object.keys(uploads).forEach(function (b) {
       if (b.indexOf("loc_") === 0 && (uploads[b] || []).length) locUploads[b] = uploads[b];
     });
+    // Shop-check-only: send a clearly-labeled placeholder row so the backend
+    // (which requires at least one inventory row) accepts it. Inventory is monthly.
+    var invPayload = locShopOnly
+      ? [{ name: "Shop check only — no inventory counted (monthly)", qty: 0, low: false, order: 0 }]
+      : d.inventory.map(function (r) {
+          var o = parseFloat(r.order);
+          return { name: r.name, qty: r.qty, low: !!r.low, order: (isNaN(o) || o < 0) ? 0 : o };
+        });
     var payload = {
       action: "locationcheck",
       token: session.token,
       submissionId: uuid(),
       location: locLocation,
-      inventory: d.inventory,
+      inventory: invPayload,
       checks: d.checks,
-      uploads: locUploads
+      uploads: locUploads,
+      shopCheckOnly: locShopOnly,
+      managerNotes: d.managerNotes
     };
     btn.disabled = true; btn.textContent = "Submitting\u2026";
     fetch(ENDPOINT_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(payload) })
@@ -1867,6 +1915,8 @@
     });
     $("#locTabInv").addEventListener("click", function () { locSetMode("inv"); });
     $("#locTabShop").addEventListener("click", function () { locSetMode("shop"); });
+    $("#locModeFull").addEventListener("click", function () { locPickMode(false); });
+    $("#locModeShop").addEventListener("click", function () { locPickMode(true); });
     $("#locBack").addEventListener("click", showChooser);
     $("#locSubmit").addEventListener("click", locSubmitForm);
   }
@@ -2048,6 +2098,7 @@
     initOffice.__init = true;
     odRenderFiles();
     $("#odType").addEventListener("change", odToggle);
+    odToggle();
     $("#odWeekStart").addEventListener("change", function () {
       var v = this.value;
       if (v && !$("#odWeekEnd").value) {
