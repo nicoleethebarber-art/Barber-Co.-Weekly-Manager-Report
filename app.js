@@ -1736,13 +1736,13 @@
       '<div><span class="mini-label">Product</span><input type="text" data-lname value="' + escapeHtml(name || "") + '" placeholder="Product name"></div>' +
       '<div class="two-col">' +
       '<div><span class="mini-label">On hand</span><input type="number" inputmode="numeric" min="0" data-lqty placeholder="0"></div>' +
-      '<div><span class="mini-label">Need to order?</span><label style="display:flex;align-items:center;gap:10px;background:var(--field);border:1.5px solid var(--line);border-radius:10px;padding:12px;min-height:50px;cursor:pointer;font-weight:700;font-size:14px"><input type="checkbox" data-llow style="width:22px;height:22px"> Low — order</label></div>' +
+      '<div><span class="mini-label">To order</span><input type="number" inputmode="numeric" min="0" data-lorder placeholder="0"></div>' +
       "</div></div></div>";
   }
 
   function buildLocForms() {
     var inv = '<div class="group"><h3>What\u2019s on the shelf?</h3>' +
-      '<p class="group-note">Enter how many you have. Tick \u201cLow — order\u201d for anything running out.</p>' +
+      '<p class="group-note">Enter how many you have on hand, and how many to order (leave 0 if fully stocked).</p>' +
       '<div class="rows" id="locInvRows">';
     LOC_SUPPLIES.forEach(function (s) { inv += locInvRow(s); });
     inv += '</div><button type="button" class="add-btn" id="locAddRow">\uff0b Add item</button></div>';
@@ -1786,10 +1786,14 @@
   function locCollect() {
     var d = { mode: locMode, inventory: [], checks: [] };
     $$("#locInvRows .loc-inv-row").forEach(function (r) {
+      var oRaw = r.querySelector("[data-lorder]").value.trim();
+      var oNum = oRaw === "" ? 0 : parseFloat(oRaw);
       d.inventory.push({
         name: r.querySelector("[data-lname]").value.trim(),
         qty: r.querySelector("[data-lqty]").value.trim(),
-        low: !!r.querySelector("[data-llow]").checked
+        order: oRaw,
+        // "Low" now means a positive order quantity (replaces the old checkbox).
+        low: oRaw !== "" && !isNaN(oNum) && oNum > 0
       });
     });
     var shop = $("#locShopForm");
@@ -1818,6 +1822,7 @@
       d.inventory.forEach(function (r, i) {
         if (!r.name) p.push("Inventory row " + (i + 1) + ": enter the product name.");
         if (r.qty === "" || isNaN(parseFloat(r.qty)) || parseFloat(r.qty) < 0) p.push((r.name || "Row " + (i + 1)) + ": enter how many are on hand.");
+        if (r.order !== "" && (isNaN(parseFloat(r.order)) || parseFloat(r.order) < 0)) p.push((r.name || "Row " + (i + 1)) + ": \u201cTo order\u201d must be 0 or more (leave blank if nothing to order).");
       });
     }
     d.checks.forEach(function (c) {
@@ -1845,8 +1850,11 @@
     // Shop-check-only: send a clearly-labeled placeholder row so the backend
     // (which requires at least one inventory row) accepts it. Inventory is monthly.
     var invPayload = locShopOnly
-      ? [{ name: "Shop check only — no inventory counted (monthly)", qty: 0, low: false }]
-      : d.inventory;
+      ? [{ name: "Shop check only — no inventory counted (monthly)", qty: 0, low: false, order: 0 }]
+      : d.inventory.map(function (r) {
+          var o = parseFloat(r.order);
+          return { name: r.name, qty: r.qty, low: !!r.low, order: (isNaN(o) || o < 0) ? 0 : o };
+        });
     var payload = {
       action: "locationcheck",
       token: session.token,
