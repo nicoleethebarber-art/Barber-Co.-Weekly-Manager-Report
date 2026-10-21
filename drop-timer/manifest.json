@@ -1,0 +1,44 @@
+{
+  "manifest_version": 3,
+  "name": "Drop Timer",
+  "version": "1.0.0",
+  "description": "Server-synced countdown, pre-flight checklist, and T-0 focus assist for scheduled drops. Never clicks or submits for you.",
+
+  "permissions": [
+    "storage",
+    "alarms",
+    "scripting"
+  ],
+
+  "optional_host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+
+  "background": {
+    "service_worker": "background/service-worker.js"
+  },
+
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+
+  "action": {
+    "default_title": "Drop Timer",
+    "default_popup": "popup/popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

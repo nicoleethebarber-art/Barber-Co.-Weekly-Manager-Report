@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Drop Timer</title>
+    <style>
+      :root { color-scheme: dark; }
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        width: 290px;
+        background: #14181f;
+        color: #e6eaf2;
+        font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+      }
+
+      header {
+        padding: 10px 12px;
+        border-bottom: 1px solid #2a3140;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #97a1b2;
+      }
+
+      .body { padding: 12px; }
+
+      .label {
+        font-weight: 600;
+        font-size: 14px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .clock {
+        font-variant-numeric: tabular-nums;
+        font-weight: 700;
+        font-size: 30px;
+        letter-spacing: -0.02em;
+        margin: 6px 0 2px;
+      }
+      .clock.amber { color: #ffb020; }
+      .clock.red   { color: #ff5a52; }
+
+      .when { font-size: 11.5px; color: #97a1b2; margin-bottom: 10px; }
+
+      .none { color: #97a1b2; padding: 6px 0 12px; }
+
+      .warn {
+        background: rgba(255, 176, 32, 0.12);
+        border: 1px solid rgba(255, 176, 32, 0.4);
+        color: #ffcf7a;
+        border-radius: 7px;
+        padding: 7px 9px;
+        font-size: 11.5px;
+        margin-bottom: 10px;
+      }
+
+      .row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid #242b36;
+      }
+
+      button, a.button {
+        background: #1d232e;
+        border: 1px solid #2a3140;
+        color: #e6eaf2;
+        border-radius: 7px;
+        padding: 6px 10px;
+        font: inherit;
+        font-size: 12px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-block;
+      }
+      button:hover, a.button:hover { background: #262e3b; }
+      button.on { background: #33261f; border-color: #7a4a2e; color: #ffb020; }
+      button:focus-visible, a.button:focus-visible { outline: 2px solid #4c8dff; outline-offset: 1px; }
+
+      input[type="range"] { flex: 1 1 auto; min-width: 0; accent-color: #4c8dff; }
+      .vol { font-size: 11px; color: #97a1b2; font-variant-numeric: tabular-nums; width: 30px; text-align: right; }
+
+      .foot {
+        padding: 8px 12px 10px;
+        font-size: 10.5px;
+        color: #5c6779;
+        text-align: center;
+        border-top: 1px solid #242b36;
+      }
+      .full { width: 100%; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <header>Next drop</header>
+
+    <div class="body">
+      <div id="none" class="none" hidden>No upcoming drops configured.</div>
+
+      <div id="detail" hidden>
+        <div id="label" class="label"></div>
+        <div id="clock" class="clock">—</div>
+        <div id="when" class="when"></div>
+        <div id="perm-warn" class="warn" hidden>
+          Site access hasn't been granted for this drop. Open settings and press
+          <b>Grant site access</b>, or the overlay can't appear.
+        </div>
+        <a id="open-page" class="button full" target="_blank" rel="noopener">Open product page</a>
+      </div>
+
+      <div class="row">
+        <button id="mute" type="button">🔊 On</button>
+        <input id="volume" type="range" min="0" max="100" step="1" />
+        <span id="vol-label" class="vol">85%</span>
+      </div>
+
+      <div class="row">
+        <button id="options" class="full" type="button">Settings &amp; drops</button>
+      </div>
+    </div>
+
+    <div class="foot">Countdown here uses your local clock. The on-page overlay is server-synced.</div>
+
+    <script src="../lib/tz.js"></script>
+    <script src="../lib/store.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>
