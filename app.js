@@ -1742,7 +1742,7 @@
 
   function buildLocForms() {
     var inv = '<div class="group"><h3>What\u2019s on the shelf?</h3>' +
-      '<p class="group-note">Enter how many you have on hand, and how many to order (leave 0 if fully stocked).</p>' +
+      '<p class="group-note">Enter how many you have on hand (leave blank if you have none), and how many to order.</p>' +
       '<div class="rows" id="locInvRows">';
     LOC_SUPPLIES.forEach(function (s) { inv += locInvRow(s); });
     inv += '</div><button type="button" class="add-btn" id="locAddRow">\uff0b Add item</button></div>';
@@ -1821,7 +1821,8 @@
       if (!d.inventory.length) p.push("Add at least one inventory item.");
       d.inventory.forEach(function (r, i) {
         if (!r.name) p.push("Inventory row " + (i + 1) + ": enter the product name.");
-        if (r.qty === "" || isNaN(parseFloat(r.qty)) || parseFloat(r.qty) < 0) p.push((r.name || "Row " + (i + 1)) + ": enter how many are on hand.");
+        // Blank On hand counts as 0 (out of stock) — it must not block the submit (Nicole, Nov 24, 2026).
+        if (r.qty !== "" && (isNaN(parseFloat(r.qty)) || parseFloat(r.qty) < 0)) p.push((r.name || "Row " + (i + 1)) + ": \u201cOn hand\u201d must be 0 or more.");
         if (r.order !== "" && (isNaN(parseFloat(r.order)) || parseFloat(r.order) < 0)) p.push((r.name || "Row " + (i + 1)) + ": \u201cTo order\u201d must be 0 or more (leave blank if nothing to order).");
       });
     }
@@ -1853,7 +1854,7 @@
       ? [{ name: "Shop check only — no inventory counted (monthly)", qty: 0, low: false, order: 0 }]
       : d.inventory.map(function (r) {
           var o = parseFloat(r.order);
-          return { name: r.name, qty: r.qty, low: !!r.low, order: (isNaN(o) || o < 0) ? 0 : o };
+          return { name: r.name, qty: r.qty === "" ? "0" : r.qty, low: !!r.low, order: (isNaN(o) || o < 0) ? 0 : o };
         });
     var payload = {
       action: "locationcheck",
